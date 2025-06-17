@@ -6,7 +6,7 @@
           "${workspaceFolder}/**",
           "/usr/include",
           "/usr/include/efi",
-          "/usr/include/efi/x86_64"
+          "/usr/include/efi/x86_64/*"
         ],
         "defines": [],
         "compilerPath": "/usr/bin/x86_64-w64-mingw32-gcc",

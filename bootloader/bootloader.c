@@ -1,14 +1,13 @@
 #include <efi.h>
 #include <efilib.h>
 
-// Simple ELF header structure
 typedef struct {
     unsigned char e_ident[16];
     UINT16 e_type;
     UINT16 e_machine;
     UINT32 e_version;
-    UINT64 e_entry; // Entry point address
-    UINT64 e_phoff; // Program header offset
+    UINT64 e_entry;
+    UINT64 e_phoff;
     UINT64 e_shoff;
     UINT32 e_flags;
     UINT16 e_ehsize;
@@ -19,40 +18,44 @@ typedef struct {
     UINT16 e_shstrndx;
 } Elf64_Ehdr;
 
-EFI_STATUS
-efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
+typedef struct {
+    UINT32 p_type;
+    UINT32 p_flags;
+    UINT64 p_offset;
+    UINT64 p_vaddr;
+    UINT64 p_paddr;
+    UINT64 p_filesz;
+    UINT64 p_memsz;
+    UINT64 p_align;
+} Elf64_Phdr;
+
+EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     InitializeLib(ImageHandle, SystemTable);
 
-    Print(L"UEFI Bootloader Stage 1 Loaded!\n");
-    Print(L"Press any key to continue...\n");
-    EFI_INPUT_KEY Key;
-    SystemTable->ConIn->Reset(SystemTable->ConIn, FALSE);
-    while (SystemTable->ConIn->ReadKeyStroke(SystemTable->ConIn, &Key) != EFI_SUCCESS);
-
+    Print(L"UEFI Bootloader Started!\n");
     EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *FileSystem;
     EFI_FILE_HANDLE RootFS, KernelFile;
     EFI_LOADED_IMAGE *LoadedImage;
     EFI_STATUS status;
 
-    // Get loaded image protocol
+    // Get LoadedImage protocol
     status = SystemTable->BootServices->HandleProtocol(
         ImageHandle, &gEfiLoadedImageProtocolGuid, (void **)&LoadedImage);
     if (EFI_ERROR(status)) {
-        Print(L"Failed to get LoadedImage protocol: %r\n", status);
+        Print(L"Failed to get LoadedImage: %r\n", status);
         return status;
     }
 
-    // Locate handles supporting EFI_SIMPLE_FILE_SYSTEM_PROTOCOL
+    // Locate FileSystem protocol
     UINTN HandleCount = 0;
     EFI_HANDLE *HandleBuffer = NULL;
     status = SystemTable->BootServices->LocateHandleBuffer(
         ByProtocol, &gEfiSimpleFileSystemProtocolGuid, NULL, &HandleCount, &HandleBuffer);
     if (EFI_ERROR(status)) {
-        Print(L"Failed to locate FileSystem protocol: %r\n", status);
+        Print(L"Failed to locate FileSystem: %r\n", status);
         return status;
     }
 
-    // Find the first handle with the protocol
     for (UINTN i = 0; i < HandleCount; i++) {
         status = SystemTable->BootServices->HandleProtocol(
             HandleBuffer[i], &gEfiSimpleFileSystemProtocolGuid, (void **)&FileSystem);
@@ -72,53 +75,74 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
         return status;
     }
 
-    status = RootFS->Open(RootFS, &KernelFile, L"kernel.elf", EFI_FILE_MODE_READ, 0);
+    status = RootFS->Open(RootFS, &KernelFile, L"kernel", EFI_FILE_MODE_READ, 0);
     if (EFI_ERROR(status)) {
         Print(L"Failed to load kernel.elf: %r\n", status);
+        RootFS->Close(RootFS);
         return status;
     }
 
     // Get kernel file size
     EFI_FILE_INFO *FileInfo;
-    UINTN FileInfoSize = sizeof(EFI_FILE_INFO) + 200; // Extra space for FileName
+    UINTN FileInfoSize = sizeof(EFI_FILE_INFO) + 200;
     status = SystemTable->BootServices->AllocatePool(EfiLoaderData, FileInfoSize, (void**)&FileInfo);
     if (EFI_ERROR(status)) {
         Print(L"Failed to allocate pool for FileInfo: %r\n", status);
+        KernelFile->Close(KernelFile);
+        RootFS->Close(RootFS);
         return status;
     }
     status = KernelFile->GetInfo(KernelFile, &gEfiFileInfoGuid, &FileInfoSize, FileInfo);
     if (EFI_ERROR(status)) {
         Print(L"Failed to get kernel file info: %r\n", status);
+        KernelFile->Close(KernelFile);
+        RootFS->Close(RootFS);
         SystemTable->BootServices->FreePool(FileInfo);
         return status;
     }
 
     UINTN kernelSize = FileInfo->FileSize;
     VOID *kernelBuffer;
-
-    // Allocate memory for kernel
     status = SystemTable->BootServices->AllocatePages(AllocateAnyPages, EfiLoaderData,
         (kernelSize + 0xFFF) / 0x1000, (EFI_PHYSICAL_ADDRESS*)&kernelBuffer);
     if (EFI_ERROR(status)) {
-        Print(L"Failed to allocate pages for kernel: %r\n", status);
+        Print(L"Failed to allocate kernel memory: %r\n", status);
+        KernelFile->Close(KernelFile);
+        RootFS->Close(RootFS);
         SystemTable->BootServices->FreePool(FileInfo);
         return status;
     }
     status = KernelFile->Read(KernelFile, &kernelSize, kernelBuffer);
     if (EFI_ERROR(status)) {
         Print(L"Failed to read kernel: %r\n", status);
+        KernelFile->Close(KernelFile);
+        RootFS->Close(RootFS);
         SystemTable->BootServices->FreePool(FileInfo);
+        SystemTable->BootServices->FreePages((EFI_PHYSICAL_ADDRESS)kernelBuffer, (kernelSize + 0xFFF) / 0x1000);
         return status;
     }
-    SystemTable->BootServices->FreePool(FileInfo); // Free FileInfo after use
-    Print(L"Kernel loaded at address: %lx\n", kernelBuffer);
+    KernelFile->Close(KernelFile);
+    SystemTable->BootServices->FreePool(FileInfo);
+    Print(L"Kernel loaded at %p\n", kernelBuffer);
 
-    // Parse ELF header to get entry point
+    // Validate and parse ELF
     Elf64_Ehdr *elfHeader = (Elf64_Ehdr *)kernelBuffer;
     if (elfHeader->e_ident[0] != 0x7F || elfHeader->e_ident[1] != 'E' ||
         elfHeader->e_ident[2] != 'L' || elfHeader->e_ident[3] != 'F') {
         Print(L"Invalid ELF header\n");
+        RootFS->Close(RootFS);
+        SystemTable->BootServices->FreePages((EFI_PHYSICAL_ADDRESS)kernelBuffer, (kernelSize + 0xFFF) / 0x1000);
         return EFI_INVALID_PARAMETER;
+    }
+    Elf64_Phdr *phdrs = (Elf64_Phdr *)((UINT8 *)kernelBuffer + elfHeader->e_phoff);
+    for (UINT16 i = 0; i < elfHeader->e_phnum; i++) {
+        if (phdrs[i].p_type == 1) { // PT_LOAD
+            VOID *addr = (VOID *)phdrs[i].p_paddr;
+            SystemTable->BootServices->CopyMem(addr, (UINT8 *)kernelBuffer + phdrs[i].p_offset, phdrs[i].p_filesz);
+            if (phdrs[i].p_memsz > phdrs[i].p_filesz) {
+                SystemTable->BootServices->SetMem((UINT8 *)addr + phdrs[i].p_filesz, phdrs[i].p_memsz - phdrs[i].p_filesz, 0);
+            }
+        }
     }
     UINT64 kernelEntry = elfHeader->e_entry;
 
@@ -127,23 +151,36 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     UINT32 descVer;
     EFI_MEMORY_DESCRIPTOR *memMap = NULL;
     SystemTable->BootServices->GetMemoryMap(&mapSize, NULL, &mapKey, &descSize, &descVer);
-    mapSize += descSize * 10;
-    SystemTable->BootServices->AllocatePool(EfiLoaderData, mapSize, (void**)&memMap);
+    mapSize += descSize * 2;
+    status = SystemTable->BootServices->AllocatePool(EfiLoaderData, mapSize, (void**)&memMap);
+    if (EFI_ERROR(status)) {
+        Print(L"Failed to allocate memory map: %r\n", status);
+        RootFS->Close(RootFS);
+        SystemTable->BootServices->FreePages((EFI_PHYSICAL_ADDRESS)kernelBuffer, (kernelSize + 0xFFF) / 0x1000);
+        return status;
+    }
     status = SystemTable->BootServices->GetMemoryMap(&mapSize, memMap, &mapKey, &descSize, &descVer);
     if (EFI_ERROR(status)) {
         Print(L"Failed to get memory map: %r\n", status);
+        RootFS->Close(RootFS);
+        SystemTable->BootServices->FreePool(memMap);
+        SystemTable->BootServices->FreePages((EFI_PHYSICAL_ADDRESS)kernelBuffer, (kernelSize + 0xFFF) / 0x1000);
         return status;
     }
 
+    RootFS->Close(RootFS);
+
     // Exit boot services
+    Print(L"Jumping to kernel at %p\n", kernelEntry);
     status = SystemTable->BootServices->ExitBootServices(ImageHandle, mapKey);
     if (EFI_ERROR(status)) {
         Print(L"Failed to exit boot services: %r\n", status);
+        SystemTable->BootServices->FreePool(memMap);
         return status;
     }
 
-    // Jump to kernel
-    void (*kernel_entry)(void) = ((__attribute__((sysv_abi)) void (*)(void))kernelEntry);
+    // Jump to kernel (adjust based on kernel requirements)
+    void (*kernel_entry)(void) = (void *)kernelEntry;
     kernel_entry();
 
     return EFI_SUCCESS;

@@ -1,0 +1,369 @@
+
+build/BOOTX64.efi:     file format pei-x86-64
+build/BOOTX64.efi
+architecture: i386:x86-64, flags 0x00000132:
+EXEC_P, HAS_SYMS, HAS_LOCALS, D_PAGED
+start address 0x0000000000010000
+
+Characteristics 0x207
+	relocations stripped
+	executable
+	line numbers stripped
+	debugging information removed
+
+Time/Date		Thu Jan  1 01:00:00 1970
+Magic			020b	(PE32+)
+MajorLinkerVersion	2
+MinorLinkerVersion	38
+SizeOfCode		0000000000006000
+SizeOfInitializedData	0000000000003e00
+SizeOfUninitializedData	0000000000000200
+AddressOfEntryPoint	0000000000010000
+BaseOfCode		0000000000010000
+ImageBase		0000000000000000
+SectionAlignment	00001000
+FileAlignment		00000200
+MajorOSystemVersion	0
+MinorOSystemVersion	0
+MajorImageVersion	0
+MinorImageVersion	0
+MajorSubsystemVersion	0
+MinorSubsystemVersion	0
+Win32Version		00000000
+SizeOfImage		00018e08
+SizeOfHeaders		00000400
+CheckSum		00019db1
+Subsystem		0000000a	(EFI application)
+DllCharacteristics	00000000
+SizeOfStackReserve	0000000000000000
+SizeOfStackCommit	0000000000000000
+SizeOfHeapReserve	0000000000000000
+SizeOfHeapCommit	0000000000000000
+LoaderFlags		00000000
+NumberOfRvaAndSizes	00000010
+
+The Data Directory
+Entry 0 0000000000000000 00000000 Export Directory [.edata (or where ever we found it)]
+Entry 1 0000000000000000 00000000 Import Directory [parts of .idata]
+Entry 2 0000000000000000 00000000 Resource Directory [.rsrc]
+Entry 3 0000000000000000 00000000 Exception Directory [.pdata]
+Entry 4 0000000000000000 00000000 Security Directory
+Entry 5 0000000000000000 00000000 Base Relocation Directory [.reloc]
+Entry 6 0000000000000000 00000000 Debug Directory
+Entry 7 0000000000000000 00000000 Description Directory
+Entry 8 0000000000000000 00000000 Special Directory
+Entry 9 0000000000000000 00000000 Thread Storage Directory [.tls]
+Entry a 0000000000000000 00000000 Load Configuration Directory
+Entry b 0000000000000000 00000000 Bound Import Directory
+Entry c 0000000000000000 00000000 Import Address Table Directory
+Entry d 0000000000000000 00000000 Delay Import Directory
+Entry e 0000000000000000 00000000 CLR Runtime Header
+Entry f 0000000000000000 00000000 Reserved
+
+Sections:
+Idx Name          Size      VMA               LMA               File off  Algn
+  0 .text         00005f9a  0000000000010000  0000000000010000  00000400  2**4
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+  1 .rodata       00001040  0000000000015fa0  0000000000015fa0  000065a0  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+  2 .interp       0000000f  0000000000016fe0  0000000000016fe0  000077e0  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+  3 .dynstr       00000001  0000000000016fef  0000000000016fef  000079ef  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+  4 .hash         00000010  0000000000016ff0  0000000000016ff0  00007bf0  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+  5 .gnu.hash     0000001c  0000000000017000  0000000000017000  00007e00  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+  6 .data         00000c50  0000000000017020  0000000000017020  00008020  2**4
+                  CONTENTS, ALLOC, LOAD, DATA
+  7 .bss          00000070  0000000000017c70  0000000000017c70  00000000  2**4
+                  ALLOC
+  8 .dynamic      00000110  0000000000017ce0  0000000000017ce0  00008ee0  2**2
+                  CONTENTS, ALLOC, LOAD, DATA
+  9 .dynsym       00000018  0000000000017df0  0000000000017df0  000091f0  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+ 10 .rela.dyn     00000e58  0000000000017e08  0000000000017e08  00009408  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+SYMBOL TABLE:
+[  0](sec -2)(fl 0x00)(ty    0)(scl 103) (nx 1) 0x0000000000000000 minimal.c
+File 
+[  2](sec -2)(fl 0x00)(ty    0)(scl 103) (nx 1) 0x0000000000000000 print.o
+File 
+[  4](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000000f70 minimal.c
+[  5](sec -2)(fl 0x00)(ty    0)(scl 103) (nx 1) 0x0000000000000000 dpath.o
+File 
+[  7](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x00000000000039b0 ex.part.0
+[  8](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x00000000000039d0 dInstance
+[  9](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003a70 athBssBss
+[ 10](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003a90 aProtocol
+[ 11](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003ab0 hFilePath
+[ 12](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003ad0 PathCDROM
+[ 13](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003af0 vPathSata
+[ 14](sec  2)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x00000000000008f4 vPathUart
+[ 15](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003c10 CSWTCH.43
+[ 16](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003c50 nfiniBand
+[ 17](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003c70 evPathUri
+[ 18](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003d30 thMacAddr
+[ 19](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003d50 evPathI2O
+[ 20](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003d70 evPathUsb
+[ 21](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003d90 vPath1394
+[ 22](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003dd0 PathFibre
+[ 23](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003df0 vPathScsi
+[ 24](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003e30 PathAtapi
+[ 25](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003fa0 vPathAcpi
+[ 26](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003fc0 ontroller
+[ 27](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003fe0 athMemMap
+[ 28](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000004000 athPccard
+[ 29](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000004020 evPathPci
+[ 30](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000004190 deUnknown
+[ 31](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000004230 athVendor
+[ 32](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000004290 HardDrive
+[ 33](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000004350 v6.isra.0
+[ 34](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x00000000000045e0 vPathIPv6
+[ 35](sec -2)(fl 0x00)(ty    0)(scl 103) (nx 1) 0x0000000000000000 guid.o
+File 
+[ 37](sec  7)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x00000000000009a0 vPathIPv4
+[ 38](sec  7)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000000510 nownGuids
+[ 39](sec  7)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000000500 SEnvId
+[ 40](sec  7)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x00000000000004e0 SProtId
+[ 41](sec  7)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x00000000000004f0 SMapId
+[ 42](sec  7)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x00000000000004d0 SAliasId
+[ 43](sec -2)(fl 0x00)(ty    0)(scl 103) (nx 1) 0x0000000000000000 
+File 
+[ 45](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003820 eProtocol
+[ 46](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x00000000000001b0 bPlatform
+[ 47](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x00000000000033b0 ializeLib
+[ 48](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000002b50 DumpHex
+[ 49](sec  9)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000000000 _DYNAMIC
+[ 50](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000001690 RtCopyMem
+[ 51](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x00000000000027b0 Print
+[ 52](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000000730 eToString
+[ 53](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003840 tVariable
+[ 54](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000002520 RShiftU64
+[ 55](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x00000000000047e0 odeSPrint
+[ 56](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003730 RtStrLen
+[ 57](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x00000000000035c0 romHandle
+[ 58](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000002450 RtStpnCpy
+[ 59](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000002f60 StrSize
+[ 60](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000002fb0 strlena
+[ 61](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x00000000000051d0 PoolPrint
+[ 62](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003860 ngleEvent
+[ 63](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003590 RtStpCpy
+[ 64](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000000470 DivU64x32
+[ 65](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000000410 FreePool
+[ 66](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000000430 ZeroMem
+[ 67](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000001470 rowBuffer
+[ 68](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003760 eToString
+[ 69](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x00000000000015b0 RtStrnLen
+[ 70](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003160 tToString
+[ 71](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x00000000000023a0 CatPrint
+[ 72](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000004c60 MetaMatch
+[ 73](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003430 evicePath
+[ 74](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000002f50 StrLen
+[ 75](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003470 ompareMem
+[ 76](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003650 RtStrCat
+[ 77](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x00000000000037d0 mpareGuid
+[ 78](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000005360 toDecimal
+[ 79](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000000460 mpareGuid
+[ 80](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x00000000000034a0 RtStrCmp
+[ 81](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000005460 ompareMem
+[ 82](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000000150 ateHandle
+[ 83](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003390 RtSetMem
+[ 84](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000000380 gVariable
+[ 85](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003370 ocatePool
+[ 86](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x00000000000028a0 PrintAt
+[ 87](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000002ef0 StrnCpy
+[ 88](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x00000000000026b0 _IPrint
+[ 89](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x00000000000037a0 RtZeroMem
+[ 90](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000000650 RtStrSize
+[ 91](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x00000000000037f0 leAndSize
+[ 92](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000005350 imaltoBCD
+[ 93](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003980 Input
+[ 94](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000001190 PITEM
+[ 95](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000001740 _Print
+[ 96](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x00000000000034f0 RtStrCpy
+[ 97](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000001040 PFLUSH
+[ 98](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000002290 alizeGuid
+[ 99](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000003520 lCatPrint
+[100](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x00000000000036a0 RtStrnCpy
+[101](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000000330 RtStrnCat
+[102](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000005370 eZeroPool
+[103](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000000450 CopyMem
+[104](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000004940 dToString
+[105](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x00000000000050f0 evicePath
+[106](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x00000000000002f0 sToString
+[107](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000002ee0 StrCpy
+[108](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000004ea0 ocatePool
+[109](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000000060 PathToStr
+[110](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000002fe0 strcmpa
+[111](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x00000000000049a0 deSupport
+[112](sec  1)(fl 0x00)(ty    0)(scl   3) (nx 0) 0x0000000000004820 evicePath
+[113](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000002f10 StpnCpy
+[114](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000001080 PSETATTR
+[115](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000001000 hInstance
+[116](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000b80 ocalPrint
+[117](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000005140 toDecimal
+[118](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000003830 tifyEvent
+[119](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000002f20 StrCat
+[120](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000003110 Atoi
+[121](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000002080 DbgPrint
+[122](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000010c0 PPUTC
+[123](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000002e70 LShiftU64
+[124](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000005520 StrLwrUpr
+[125](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000052b0 eProtocol
+[126](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000002ea0 StrLwr
+[127](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000002f70 thTimeout
+[128](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000007d0 Duplicate
+[129](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000000 efi_main
+[130](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000004fe0 VVariable
+[131](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000001150 PGETC
+[132](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000002c0 memcpy
+[133](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000004d30 vicePaths
+[134](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000d30 _SPrint
+[135](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000002f40 StrnLen
+[136](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000d00 _DbgOut
+[137](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000002f00 StpCpy
+[138](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000003030 strncmpa
+[139](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000004910 hInstance
+[140](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000048d0 ePathSize
+[141](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000005ce0 anceCount
+[142](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000800 nterfaces
+[143](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000003080 xtoi
+[144](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000002350 tVariable
+[145](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000005a00 PoolPrint
+[146](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000029f0 IPrintAt
+[147](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000002d80 StrnCmp
+[148](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000032b0 ystemInfo
+[149](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000003880 Output
+[150](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000550 etaiMatch
+[151](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000005970 MemoryMap
+[152](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000005910 bFileInfo
+[153](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000002dd0 bOpenRoot
+[154](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000005060 ubStriCmp
+[155](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000003850 hInstance
+[156](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000002940 IPrint
+[157](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000830 ultU64x32
+[158](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000290 memset
+[159](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000055c0 BootOrder
+[160](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000004e10 Signature
+[161](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000004b10 Interface
+[162](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000b70 ePathNode
+[163](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000003350 imaltoBCD
+[164](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000e50 etaiMatch
+[165](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000002a90 PoolPrint
+[166](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000005b20 sciiPrint
+[167](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000440 SetMem
+[168](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000002d70 StrCmp
+[169](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000005db0 nterfaces
+[170](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000002f30 StrnCat
+[171](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000002300 nterfaces
+[172](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000002ec0 StrUpr
+[173](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000025f0 deVSPrint
+[174](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000c30 iiVSPrint
+[175](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000005a90 tUiString
+[176](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000750 LabelInfo
+[177](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000b90 eVariable
+[178](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000038b0 IInput
+[179](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000002e80 StriCmp
+[180](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000009b0 ValidMBR
+[181](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000001450 tionTable
+[182](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000002870 VPrint
+[183](sec  1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000004ba0 alueToHex
+[184](sec  8)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000058 evicePath
+[185](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000002f0 itialized
+[186](sec  8)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000060 GuidList
+[187](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000350 tocolGuid
+[188](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000060 tocolGuid
+[189](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000230 tocolGuid
+[190](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000004c0 rProtocol
+[191](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000000f0 evicePath
+[192](sec  8)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000048 ST
+[193](sec  8)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000010 gProtocol
+[194](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000240 eDebugOut
+[195](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000330 rProtocol
+[196](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000040 tocolGuid
+[197](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000080 tocolGuid
+[198](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000002d0 rProtocol
+[199](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000310 tocolGuid
+[200](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000000e0 tocolGuid
+[201](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000002b0 4Protocol
+[202](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000000a0 eInfoGuid
+[203](sec  8)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000008 4Protocol
+[204](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000520 eRaiseTPL
+[205](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000090 Interface
+[206](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000360 rProtocol
+[207](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000130 tocolGuid
+[208](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000004c8 TableGuid
+[209](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000100 evicePath
+[210](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000003c0 TableGuid
+[211](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000420 tocolGuid
+[212](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000260 tocolGuid
+[213](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000140 tProtocol
+[214](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000200 TableGuid
+[215](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000370 tocolGuid
+[216](sec -1)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000010000 tocolGuid
+[217](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000004c4 E_ADDRESS
+[218](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000270 evicePath
+[219](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000740 eProtocol
+[220](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000000 Hex
+[221](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000003d0 CodeTable
+[222](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000410 tocolGuid
+[223](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000050 tocolGuid
+[224](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000010 EFIDebug
+[225](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000001a0 xProtocol
+[226](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000003f0 0PlusGuid
+[227](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000470 tocolGuid
+[228](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000001b0 tocolGuid
+[229](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000004b0 VT100Guid
+[230](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000300 iableGuid
+[231](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000002a0 tocolGuid
+[232](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000070 mInfoGuid
+[233](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000460 TableGuid
+[234](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000120 tocolGuid
+[235](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000190 TableGuid
+[236](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000290 TUTF8Guid
+[237](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000001c0 nfoIdGuid
+[238](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000390 cAnsiGuid
+[239](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000450 tocolGuid
+[240](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000000d0 tocolGuid
+[241](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000430 gProtocol
+[242](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000001e0 tocolGuid
+[243](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000540 tocolGuid
+[244](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000002c0 Interface
+[245](sec  8)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000040 BS
+[246](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000150 tocolGuid
+[247](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000001f0 TableGuid
+[248](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000490 tocolGuid
+[249](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000220 tocolGuid
+[250](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000004cc rProtocol
+[251](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000003b0 ationType
+[252](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000110 tocolGuid
+[253](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000003e0 TableGuid
+[254](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000380 tocolGuid
+[255](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000002e0 tocolGuid
+[256](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000000c0 tocolGuid
+[257](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000030 4Protocol
+[258](sec  8)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000018 tocolGuid
+[259](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000320 wInstance
+[260](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000020 tocolGuid
+[261](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000004a0 tocolGuid
+[262](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000480 tocolGuid
+[263](sec  8)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000020 RT
+[264](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000340 tocolGuid
+[265](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000001d0 tocolGuid
+[266](sec  8)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000000 gProtocol
+[267](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000003a0 estoreTPL
+[268](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000170 tocolGuid
+[269](sec  8)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000050 cyMbrGuid
+[270](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000250 ageHandle
+[271](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000400 sProtocol
+[272](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000210 tocolGuid
+[273](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x00000000000000b0 tocolGuid
+[274](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000440 gProtocol
+[275](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000580 tocolGuid
+[276](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000180 PathTable
+[277](sec  8)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000030 NullGuid
+[278](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000160 itionGuid
+[279](sec  7)(fl 0x00)(ty    0)(scl   2) (nx 0) 0x0000000000000280 ownDevice
+
+
