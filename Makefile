@@ -2,7 +2,8 @@
 CC = x86_64-elf-gcc
 LD_BOOTLOADER = ld
 LD_KERNEL = ld
-OBJCOPY = objcopy # Explicitly define objcopy
+OBJCOPY = objcopy # Defined but not used for EFI conversion now
+ELF2EFI = elf2efi
 
 BUILD_DIR = build
 ISO_DIR = iso
@@ -21,31 +22,31 @@ all: $(BUILD_DIR)/boot.iso
 # UEFI bootloader
 $(BUILD_DIR)/BOOTX64.efi: bootloader/minimal.c
 	mkdir -p $(BUILD_DIR)
-    # Compile C source to an ELF object file (with PIC, using -fpic)
+# Compile C source to an ELF object file (with PIC, using -fpic)
 	$(CC) $(EFI_INC) -fshort-wchar -ffreestanding -fpic -mno-red-zone -fno-stack-protector -fno-stack-check -Wall -c $< -o $(BUILD_DIR)/bootloader.o
-    # Link the ELF object into an ELF executable as a Position Independent Executable (PIE).
-    # The -pie flag forces the linker to generate R_X86_64_RELATIVE relocations,
-    # which objcopy needs to create the PE/COFF base relocation table (.reloc).
+# Link the ELF object into an ELF executable as a Position Independent Executable (PIE).
+# The -pie flag forces the linker to generate R_X86_64_RELATIVE relocations,
+# which elf2efi needs to create the PE/COFF base relocation table (.reloc).
 	$(LD_BOOTLOADER) $(LD_BOOTLOADER_FLAGS) $(BUILD_DIR)/bootloader.o $(EFI_LIB) -o $(BUILD_DIR)/bootloader.elf
 
-    # --- Debugging Checks (Optional, can be removed once it works) ---
-    # Check if the intermediate ELF file is a PIE (should output "shared object")
+# --- Debugging Checks (Optional, can be removed once it works) ---
+# Check if the intermediate ELF file is a PIE (should output "shared object")
 	@echo "--- Verifying intermediate build/bootloader.elf ---"
 	@file $(BUILD_DIR)/bootloader.elf
 	@objdump -r $(BUILD_DIR)/bootloader.elf | grep R_X86_64_RELATIVE || echo "WARNING: No R_X86_64_RELATIVE relocations found in bootloader.elf (might be an issue)"
 	@echo "---------------------------------------------------"
-    # --- End Debugging Checks ---
+# --- End Debugging Checks ---
 
-    # Convert the PIE ELF executable to PE/COFF format (.efi) using objcopy.
-    # objcopy should now have the necessary R_X86_64_RELATIVE relocations to build the .reloc section in the PE/COFF.
-	$(OBJCOPY) --subsystem efi-app -O pei-x86-64 $(BUILD_DIR)/bootloader.elf $(BUILD_DIR)/BOOTX64.efi
+# Convert the PIE ELF executable to PE/COFF format (.efi) using elf2efi.
+# elf2efi preserves the relocations properly and generates the .reloc section.
+	$(ELF2EFI) $(BUILD_DIR)/bootloader.elf $(BUILD_DIR)/BOOTX64.efi
 
-    # --- Debugging Checks (Optional, can be removed once it works) ---
-    # Verify the final EFI file contains a .reloc section (crucial for relocatability)
+# --- Debugging Checks (Optional, can be removed once it works) ---
+# Verify the final EFI file contains a .reloc section (crucial for relocatability)
 	@echo "--- Verifying final build/BOOTX64.efi ---"
 	@objdump -x $(BUILD_DIR)/BOOTX64.efi | grep ".reloc" > /dev/null && echo "INFO: build/BOOTX64.efi contains a .reloc section." || echo "WARNING: build/BOOTX64.efi DOES NOT contain a .reloc section. This is likely why it's not booting."
 	@echo "-----------------------------------------"
-    # --- End Debugging Checks ---
+# --- End Debugging Checks ---
 
 # Kernel ELF
 $(BUILD_DIR)/kernel.elf: kernel/kernel.c
