@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "*.ejs": "html",
+        "efi.h": "c"
+    },
+    "C_Cpp.errorSquiggles": "enabled"
+}
