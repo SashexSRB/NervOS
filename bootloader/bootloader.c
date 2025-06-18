@@ -89,9 +89,6 @@ bool printHex(UINTN number) {
     return true;
 }
 
-
-
-
 // =================
 // Print formatted strings
 // =================
@@ -161,17 +158,12 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     
     // Reset console output
     cout->Reset(SystemTable->ConOut, false);
-
     cout->SetAttribute(SystemTable->ConOut, EFI_TEXT_ATTR(EFI_RED, EFI_BLACK));
-
     cout->ClearScreen(SystemTable->ConOut);
-
     cout->OutputString(SystemTable->ConOut, u"Welcome to NervOS\r\n\r\n");
 
-    
     printf(u"Testing hex: %x\r\n", (UINTN)0x11223344AABBCCDD);
     printf(u"Testing negative int: %d\r\n\r\n", (INT32)-54321);
-
 
     cout->OutputString(SystemTable->ConOut, u"Current text mode:\r\n");
 
@@ -179,7 +171,6 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
 
     //Get current text mode's current cols and rows
     cout->QueryMode(cout, cout->Mode->Mode, &maxCols, &maxRows);
-
     printf(u"Max Mode: %d\r\n"
         u"Current Mode: %d\r\n"
         u"Attribute: %d\r\n" // TODO: change to %x and print 
@@ -199,9 +190,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     );
     
     cout->OutputString(SystemTable->ConOut, u"Available text modes:\r\n\r\n");
-
     // SetMode
-
 
     // Wait until keypress, then return
     //EFI_INPUT_KEY key;
