@@ -15,15 +15,15 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     initGlbVars(SystemTable);
     
     // Clear screen
-    cout->ClearScreen(SystemTable->ConOut);
+    cout->ClearScreen(cout);
 
     // Print Hello World
-    cout->OutputString(SystemTable->ConOut, u"Hello World!\r\n\r\n");
+    cout->OutputString(cout, u"Hello World!\r\n\r\n");
 
 
     // Wait until keypress, then return
     EFI_INPUT_KEY key;
-    while (cin->ReadKeyStroke(SystemTable->ConIn, &key) != EFI_SUCCESS);
+    while (cin->ReadKeyStroke(cin, &key) != EFI_SUCCESS);
 
     // Shutdown, does not return
     SystemTable->RuntimeServices->ResetSystem(EfiResetShutdown, EFI_SUCCESS, 0, NULL);
