@@ -207,6 +207,11 @@ BOOLEAN eprintf(CHAR16 *fmt, ...) {
       i++;
       // Grab next arg type from input args and print it
       switch(fmt[i]) {
+        case u'c': {
+          cstr[0] = va_arg(args, int);
+          cout->OutputString(cout, cstr[0]);
+        }
+        break;
         case u's': {
           //printf("%s", string) - Print CHAR16 string
           CHAR16 *string = va_arg(args, CHAR16 *);
@@ -278,9 +283,13 @@ BOOLEAN printf(CHAR16 *fmt, ...) {
       i++;
       // Grab next arg type from input args and print it
       switch(fmt[i]) {
+        case u'c': {
+          cstr[0] = va_arg(args, int);
+          cout->OutputString(cout, cstr[0]);
+        }
+        break;
         case u's': {
-          //printf("%s", string) - Print CHAR16 string
-          CHAR16 *string = va_arg(args, CHAR16 *);
+          CHAR16 *string = va_arg(args, CHAR16*);
           cout->OutputString(cout, string);
         }
         break;
@@ -793,18 +802,14 @@ EFI_STATUS testMouse(void) {
   for ( INTN y = 0; y < cursorSize; y++) {
     for ( INTN x = 0; x < cursorSize; x++) {
       savedBuffer[(y * cursorSize) + x] = fb[(modeInfo->PixelsPerScanLine * (cursorY + y)) + (cursorX + x)];
-    }
-  }
 
-  for ( INTN y = 0; y < cursorSize; y++) {
-    for ( INTN x = 0; x < cursorSize; x++) {
       EFI_GRAPHICS_OUTPUT_BLT_PIXEL csrPx = cursorBuffer[(y * cursorSize) + x];
       fb[(modeInfo->PixelsPerScanLine * (cursorY + y)) + (cursorX + x)] = csrPx;
     }
   }
 
   // Input loop
-  while(1) {
+  while(TRUE) {
     EFI_EVENT events[2] = { cin->WaitForKey, spp->WaitForInput };
     UINTN idx = 0;
     bs->WaitForEvent(2, events, &idx);
@@ -819,7 +824,6 @@ EFI_STATUS testMouse(void) {
     } else if (idx == 1) {
       // Mouse movement
       // Get mouse state
-      // TODO:
       EFI_SIMPLE_POINTER_STATE state = { 0 };
       spp->GetState(spp, &state);
 
@@ -827,33 +831,24 @@ EFI_STATUS testMouse(void) {
       // Movement is spp state's RelativeMovement / spp's Resolution
       // Movement amount is in mm; 1mm = 2% of X or Y Res
 
-      //float xmmFloat = (float)state.RelativeMovementX / (float)spp->Mode->ResolutionX; 
-      //float ymmFloat = (float)state.RelativeMovementY / (float)spp->Mode->ResolutionY;
-      //INT32 xmm = (INT32)xmmFloat;
-      //INT32 ymm = (INT32)ymmFloat;
+      float xmmFloat = (float)state.RelativeMovementX / (float)spp->Mode->ResolutionX; 
+      float ymmFloat = (float)state.RelativeMovementY / (float)spp->Mode->ResolutionY;
 
-      INT32 xmm = state.RelativeMovementX / spp->Mode->ResolutionX;
-      INT32 ymm = state.RelativeMovementY / spp->Mode->ResolutionY;
-
-      // if moved a tiny bit, show that on screen for a small min amount
-      //if(xmmFloat > 0.0 && xmmFloat == 0) xmm = 1;
-      //if(ymmFloat > 0.0 && ymmFloat == 0) ymm = 1;
-
-      if(state.RelativeMovementX > 0 && xmm == 0) xmm = 1;
-      if(state.RelativeMovementY > 0 && ymm == 0) ymm = 1;
+      if(state.RelativeMovementX > 0 && xmmFloat == 0.0) xmmFloat = 1.0;
+      if(state.RelativeMovementY > 0 && ymmFloat == 0.0) ymmFloat = 1.0;
 
       // Erase text first before reprinting
       printf(u"                                                                    \r"),
       printf(u"Mouse Xpos: %d, Ypos: %dXmm: %d, Ymm: %d, LB: %u, RB: %u\r",
-        cursorX, cursorY, xmm, ymm, state.LeftButton, state.RightButton
+        cursorX, cursorY, (INTN)xmmFloat, (INTN)ymmFloat, state.LeftButton, state.RightButton
       );
 
       // Draw cursor: get pixel amount to move per mm
-      INT32 xResMm = modeInfo->HorizontalResolution * 0.02;
-      INT32 yResMm = modeInfo->VerticalResolution * 0.02;
+      float xResMmPx = modeInfo->HorizontalResolution * 0.02;
+      float yResMmPx = modeInfo->VerticalResolution * 0.02;
 
       // first overwrite current cursor position with screen bg color to "erase" cursor
-      // TODO: save framebuffer data at mouse position first, then redraw that data instead of just overwriting with background color e.g. with Blt buffer and use EfiVideoToBltBuffer and EfiBltBufferToVideo
+      // save framebuffer data at mouse position first, then redraw that data instead of just overwriting with background color e.g. with Blt buffer and use EfiVideoToBltBuffer and EfiBltBufferToVideo
       fb = (EFI_GRAPHICS_OUTPUT_BLT_PIXEL *)gop->Mode->FrameBufferBase;
       for ( INTN y = 0; y < cursorSize; y++) {
         for ( INTN x = 0; x < cursorSize; x++) {
@@ -861,8 +856,8 @@ EFI_STATUS testMouse(void) {
         }
       }
 
-      cursorX += (xResMm * xmm);
-      cursorY *= (yResMm * ymm);
+      cursorX += (INTN)(xResMmPx * xmmFloat);
+      cursorY *= (INTN)(yResMmPx * ymmFloat);
 
       // Keep cursor in screen bounds
       if (cursorX < 0) cursorX = 0;
@@ -874,12 +869,7 @@ EFI_STATUS testMouse(void) {
       for ( INTN y = 0; y < cursorSize; y++) {
         for ( INTN x = 0; x < cursorSize; x++) {
           savedBuffer[(y * cursorSize) + x] = fb[(modeInfo->PixelsPerScanLine * (cursorY + y)) + (cursorX + x)];
-        }
-      }
 
-      // then draw cursor
-      for ( INTN y = 0; y < cursorSize; y++) {
-        for ( INTN x = 0; x < cursorSize; x++) {
           EFI_GRAPHICS_OUTPUT_BLT_PIXEL csrPx = cursorBuffer[(y * cursorSize) + x];
           fb[(modeInfo->PixelsPerScanLine * (cursorY + y)) + (cursorX + x)] = csrPx;
         }
@@ -891,4 +881,46 @@ EFI_STATUS testMouse(void) {
   bs->FreePool(handleBuffer);
 
   return EFI_SUCCESS;
+}
+
+// =================
+// Printing DateTime
+// =================
+VOID EFIAPI printDateTime(IN EFI_EVENT event, IN VOID *Context) {
+  (VOID)event; // Suppress compiler warnings
+
+  // Timer context will be the textmode screen bounds
+  typedef struct {
+    UINT32 rows, cols;
+  } TimerContext;
+
+  TimerContext context = *(TimerContext *)Context;
+
+  // Save current cursor pos before printing
+  UINT32 saveCol = cout->Mode->CursorColumn, saveRow = cout->Mode->CursorRow;
+
+  // Get datetime
+  EFI_TIME time = {0};
+  EFI_TIME_CAPABILITIES capabilities = {0};
+
+  // get current datetime
+  rs->GetTime(&time, &capabilities);
+
+  // Move cursor to print in lower right corner
+  cout->SetCursorPosition(cout, context.cols - 20, context.rows -1);
+
+  // Print current Datetime
+  printf(
+    u"%u-%c%u-%c%u %c%u:%c%u:%c%u ",
+    time.Year, 
+    time.Month  < 10 ? u'0' : u'\0', time.Month,
+    time.Day    < 10 ? u'0' : u'\0', time.Day,
+    time.Hour   < 10 ? u'0' : u'\0', time.Hour,
+    time.Minute < 10 ? u'0' : u'\0', time.Minute,
+    time.Second < 10 ? u'0' : u'\0', time.Second
+  );
+
+  // Restore cursor pos
+  cout->SetCursorPosition(cout, saveCol, saveRow);
+
 }

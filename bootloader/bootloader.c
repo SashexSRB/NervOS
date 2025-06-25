@@ -10,6 +10,9 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
   cout->Reset(cout, false);
   cout->SetAttribute(cout, EFI_TEXT_ATTR(DEFAULT_FG_COLOR, DEFAULT_BG_COLOR));
 
+  // Disable watchdog timer
+  bs->SetWatchdogTimer(0, 0x10000, 0, NULL);
+
   // Screen loop
   bool running = true;
   while(running) {
@@ -29,6 +32,28 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     // Get current text mode ColsxRows values
     UINTN cols = 0, rows = 0;
     cout->QueryMode(cout, cout->Mode->Mode, &cols, &rows);
+
+    // Timer context will be text mode screen boundds
+    typedef struct {
+      UINT32 rows, cols;
+    } TimerContext;
+    TimerContext context = {0};
+    context.rows = rows;
+    context.cols = cols;
+
+    EFI_EVENT timerEvent;
+
+    // Create timer event, to print datetime on screen every second.
+    bs->CreateEvent(
+      EVT_TIMER | EVT_NOTIFY_SIGNAL,
+      TPL_CALLBACK,
+      printDateTime,
+      (VOID *)&context,
+      &timerEvent
+    );
+
+    // Set timer for the timer event to run every 100ns (1s)
+    bs->SetTimer(timerEvent, TimerPeriodic, 10000000);
 
     // Print keybinds at the bottom of the screen
     cout->SetCursorPosition(cout, 0, rows-3);
@@ -90,6 +115,8 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
           }
         break;
         case SCANCODE_ESC:
+          // Close Timer Event
+          bs->CloseEvent(timerEvent);
           // Escape, poweroff
           rs->ResetSystem(EfiResetShutdown, EFI_SUCCESS, 0, NULL);
           // !NOTE!: This should not return, sys should poweroff.
