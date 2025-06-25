@@ -39,3 +39,4 @@ $(TARGET): $(OBJS)
 
 clean:
 	rm -rf $(TARGET) *.efi *.o *.d
+	rm bootloader/*.o
