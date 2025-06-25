@@ -5,14 +5,15 @@
 # Launch QEMU with USB passthrough
 sudo qemu-system-x86_64 \
 -drive format=raw,file=test.hdd \
--bios /usr/share/ovmf/OVMF.fd \
+-bios bios64_app.bin \
 -m 256M \
 -vga std \
 -display gtk,gl=on,zoom-to-fit=off,window-close=on \
 -name nOS \
 -machine q35 \
 -usb \
--device qemu-xhci,id=xhci \
--device usb-tablet \
+-device usb-mouse \
 -rtc base=localtime \
 -net none
+
+#-bios /usr/share/OVMF/x64/OVMF.4m.fd \
