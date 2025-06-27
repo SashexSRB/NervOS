@@ -57,6 +57,22 @@ void initGlbVars(EFI_HANDLE handle, EFI_SYSTEM_TABLE *systable) {
 }
 
 // =================
+// Copy string UINT16 strcpy
+// =================
+CHAR16 *strcpy_u16(CHAR16 *dst, CHAR16 *src) {
+  if(!dst) return NULL;
+  if(!src) return dst;
+
+  CHAR16 *result = dst;
+  while(*src) {
+    *dst++ = *src++;
+  }
+  *dst = u'\0'; // Null terminate
+
+  return result;
+}
+
+// =================
 // Print an number to stderr
 // =================
 BOOLEAN eprintNum(UINTN number, UINT8 base, BOOLEAN isSigned) {
@@ -1061,5 +1077,123 @@ VOID EFIAPI printDateTime(IN EFI_EVENT event, IN VOID *Context) {
 
   // Restore cursor pos
   cout->SetCursorPosition(cout, saveCol, saveRow);
-
 }
+
+// =================
+// Reading ESP Files
+// =================
+EFI_STATUS readEspFiles(void) {
+  // Get Loaded Image Protocol for this EFI image/app itself,
+  // in order to get the device handle, to use for the Simple File System Protocol
+  EFI_GUID lipGuid = EFI_LOADED_IMAGE_PROTOCOL_GUID;
+  EFI_LOADED_IMAGE_PROTOCOL *lip;
+  EFI_STATUS status = EFI_SUCCESS;
+
+  status = bs->OpenProtocol(image, &lipGuid, (VOID **)&lip, image, NULL, EFI_OPEN_PROTOCOL_BY_HANDLE_PROTOCOL);
+
+  if(EFI_ERROR(status)) {
+    eprintf(u"Error %x: Could not open Loaded Image Protocol\r\n", status);
+    return status;
+  }
+
+  // Get Simple File System Protocol for device handle for this loaded image, to open the root directory for the ESP.
+  EFI_GUID sfspGuid = EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID;
+  EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *sfsp = NULL;
+
+  status = bs->OpenProtocol(lip->DeviceHandle, &sfspGuid, (VOID **)&sfsp, image, NULL, EFI_OPEN_PROTOCOL_BY_HANDLE_PROTOCOL);
+  
+  if(EFI_ERROR(status)) {
+    eprintf(u"Error %x: Could not open Simple FileSystem Protocol\r\n", status);
+    return status;
+  }
+  
+  // Open root directory via OpenVolume()
+  EFI_FILE_PROTOCOL *dirp = NULL;
+  status = sfsp->OpenVolume(sfsp, &dirp);
+
+  if(EFI_ERROR(status)) {
+    eprintf(u"Error %x: Could not open volume for root directory\r\n", status);
+    goto cleanup;
+  }
+
+  // Start at root directory
+  CHAR16 currentDirectory[256];
+  strcpy_u16(currentDirectory, u"/");
+  
+  // Print dir entries for currently opened directory
+  // Overall input loop
+  INT32 csrRow = 1;
+  while (true) {
+    cout->ClearScreen(cout);
+    printf(u"%s: \r\n", currentDirectory);
+
+    INT32 numEntries = 0; 
+    EFI_FILE_INFO fileInfo;
+
+    dirp->SetPosition(dirp, 0); // Reset to start of directory entries
+    UINTN buffSize = sizeof fileInfo;
+    dirp->Read(dirp, &buffSize, &fileInfo);
+
+    while(buffSize > 0) {
+      // Got next dir entry, print info
+      numEntries++;
+      if(csrRow == cout->Mode->CursorRow){
+        // Highlight row cursor/user is on
+        cout->SetAttribute(cout, EFI_TEXT_ATTR(HL_FG_COLOR, HL_BG_COLOR));
+      }
+
+      printf(u"%s %s\r\n", (fileInfo.Attribute & EFI_FILE_DIRECTORY) ? u"[DIR] " : u"[FILE]", fileInfo.FileName);
+
+      if(csrRow+1 == cout->Mode->CursorRow){
+        // Dehighlight row cursor/user is on
+        cout->SetAttribute(cout, EFI_TEXT_ATTR(DEFAULT_FG_COLOR, DEFAULT_BG_COLOR));
+      }
+      
+      buffSize = sizeof fileInfo;
+      dirp->Read(dirp, &buffSize, &fileInfo);
+    }
+
+    EFI_INPUT_KEY key = getKey();
+    switch (key.ScanCode) {
+      case SCANCODE_ESC: {
+        // ESC key, go to main menu
+        goto cleanup;
+      }
+      break;
+      case SCANCODE_UP_ARROW: {
+        if(csrRow > 1) csrRow--;
+      }
+      break;
+      case SCANCODE_DOWN_ARROW: {
+        if(csrRow < numEntries) csrRow++;
+      }
+      break;
+      default: {
+        if (key.UnicodeChar == u"\r") {
+          // Enter key:
+          //  for a directory, enter that directory and iterate the loop.
+          //  for a file, print file contents on screen.
+          // TODO:
+          // Get directory entry under cursor row
+          dirp->SetPosition(dirp, 0);
+
+          do {
+            buffSize = sizeof fileInfo;
+            dirp->Read(dirp, &buffSize, &fileInfo);
+          } while (cout->Mode->CursorRow < csrRow);
+          
+        }
+      }
+      break;
+    }
+  }
+
+  getKey();
+
+  cleanup:
+  // Close open protocols
+  bs->CloseProtocol(lip->DeviceHandle, &sfspGuid, image, NULL);
+  bs->CloseProtocol(image, &lipGuid, image, NULL);
+  
+  return status;
+} 

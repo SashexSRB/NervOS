@@ -19,13 +19,15 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     const CHAR16 *menuChoices[] = {
       u"Set Text Mode",
       u"Set Graphics Mode",
-      u"Test Mouse"
+      u"Test Mouse",
+      u"Read ESP Files"
     };
 
     EFI_STATUS (*menuFuncs[])(void) = {
       setTextMode,
       setGraphicsMode,
-      testMouse
+      testMouse,
+      readEspFiles,
     };
 
     cout->ClearScreen(cout);
