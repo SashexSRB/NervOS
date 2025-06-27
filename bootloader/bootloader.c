@@ -13,23 +13,25 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
   // Disable watchdog timer
   bs->SetWatchdogTimer(0, 0x10000, 0, NULL);
 
+  const CHAR16 *menuChoices[] = {
+    u"Set Text Mode",
+    u"Set Graphics Mode",
+    u"Test Mouse",
+    u"Read ESP Files",
+    u"Print Block IO Partitions",
+  };
+
+  EFI_STATUS (*menuFuncs[])(void) = {
+    setTextMode,
+    setGraphicsMode,
+    testMouse,
+    readEspFiles,
+    printBlockIoPartitions,
+  };
+
   // Screen loop
   bool running = true;
   while(running) {
-    const CHAR16 *menuChoices[] = {
-      u"Set Text Mode",
-      u"Set Graphics Mode",
-      u"Test Mouse",
-      u"Read ESP Files"
-    };
-
-    EFI_STATUS (*menuFuncs[])(void) = {
-      setTextMode,
-      setGraphicsMode,
-      testMouse,
-      readEspFiles,
-    };
-
     cout->ClearScreen(cout);
     // Get current text mode ColsxRows values
     UINTN cols = 0, rows = 0;
@@ -127,8 +129,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
           if(key.UnicodeChar == u'\r') {
             EFI_STATUS returnStatus = menuFuncs[currentRow]();
             if(EFI_ERROR(returnStatus)) {
-              eprintf(u"ERROR: %x\r\n; Press any key to go back...", returnStatus);
-              getKey();
+              error(u"ERROR: %x\r\n; Press any key to go back...", returnStatus);
             }
             gettingInput = false; // will leave input loop and reprint main menu
           }

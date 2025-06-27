@@ -8,6 +8,7 @@
 // -----------------
 #define ARR_SIZE(x) (sizeof (x) / sizeof (x)[0])
 #define PAD0(x) ((x) < 10 ? u"0" : u"")
+#define BOOL_TO_YN(b) ((b) ? u"Yes" : u"No")
 
 // -----------------
 //  Global constants
@@ -57,7 +58,42 @@ void initGlbVars(EFI_HANDLE handle, EFI_SYSTEM_TABLE *systable) {
 }
 
 // =================
-// Copy string UINT16 strcpy
+// memset for compling with clang/gcc (set len bytes of dst memory with int c) UNCOMMENT FOR CLANG
+// =================
+// VOID *memset(VOID *dst, UINT8 c, UINTN len) {
+//   UINT8 *p = dst;
+//   for(UINTN i = 0; i < len; i++) {
+//     p[i] = c;
+//   }
+//   return dst;
+// }
+
+// =================
+// memcpy for compiling with clang/gcc (set len bytes of dst memory from src) UNCOMMENT FOR CLANG
+// =================
+// VOID *memcpy(VOID *dst, VOID *src, UINTN len) {
+//   UINT8 *p = dst;
+//   UINT8 *q = src;
+//   for(UINTN i = 0; i < len; i++) {
+//     p[i] = q[i];
+//   }
+//   return dst;
+// }
+
+// ================
+// memcmp Compare up to len bytes of m1 and m2, stop at first point that they dont equal.
+// ================
+INTN memcmp(VOID *m1, VOID *m2, UINTN len) {
+  UINT8 *p = m1;
+  UINT8 *q = m2;
+  for(UINTN i = 0; i < len; i++) {
+    if(p[i] != q[i]) return (INTN)p[i] - (INTN)q[i];
+  }
+  return 0;
+}
+
+// =================
+// Copy string CHAR16 strcpy
 // =================
 CHAR16 *strcpy_u16(CHAR16 *dst, CHAR16 *src) {
   if(!dst) return NULL;
@@ -70,6 +106,46 @@ CHAR16 *strcpy_u16(CHAR16 *dst, CHAR16 *src) {
   *dst = u'\0'; // Null terminate
 
   return result;
+}
+
+// =================
+// Compare string CHAR16 strcmp
+// =================
+INTN strcmp_u16(CHAR16 *s1, CHAR16 *s2, UINTN len) {
+  if(len == 0) return 0;
+  while(len > 0 && *s1 && *s2 && *s1 == *s2) {
+    s1++;
+    s2++;
+    len--;
+  }
+  return *s1 - *s2;
+}
+
+// =================
+// Compare string CHAR16 strrchr
+// =================
+CHAR16 *strrchr_u16(CHAR16 *str, CHAR16 c) {
+  CHAR16 *result = NULL;
+
+  while (*str) {
+    if(*str == c) result = str;
+    str++;
+  }
+
+  return result;
+}
+
+// =================
+// concatenate string CHAR16 strcat
+// =================
+CHAR16 *strcat_u16(CHAR16 *dst, CHAR16 *src) {
+  CHAR16 *s = dst;
+
+  while(*s) s++; // Go until null terminator
+  while(*src) *s++ = *src++;
+
+  *s = u'\0';
+  return dst;
 }
 
 // =================
@@ -209,11 +285,9 @@ BOOLEAN printNum(UINTN number, UINT8 base, BOOLEAN isSigned) {
 // =================
 // Print formatted strings to stderr
 // =================
-BOOLEAN eprintf(CHAR16 *fmt, ...) {
+BOOLEAN eprintf(CHAR16 *fmt, va_list args) {
   BOOLEAN result = TRUE;
   CHAR16 cstr[2]; // place init this with memset and use = {} initializer
-  va_list args;
-  va_start(args, fmt);
   
   //Initialize buffer
   cstr[0] = u'\0', cstr[1] = u'\0';
@@ -278,7 +352,6 @@ BOOLEAN eprintf(CHAR16 *fmt, ...) {
     }
   }
 end:
-  va_end(args);
   return result;
 } 
 
@@ -370,6 +443,20 @@ EFI_INPUT_KEY getKey(void) {
 
     if(idx == 0) cin->ReadKeyStroke(cin, &key);
     return key;
+}
+
+// =================
+// Print error message and get a key from user, so they can acknowledge the error and it doesnt go on immediately
+// =================
+BOOLEAN error(CHAR16 *fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+  BOOLEAN result = eprintf(fmt, args); // Printf the error message to stderr
+
+  getKey(); // User will respond with input before going on
+
+  va_end(args);
+  return result;
 }
 
 // =================
@@ -556,7 +643,7 @@ EFI_STATUS setGraphicsMode(void) {
   status = bs->LocateProtocol(&gopGuid, NULL, (VOID **)&gop);
 
   if(EFI_ERROR(status)) {
-    eprintf(u"ERROR: %x Could not locate GOP! :(\r\n", status);
+    error(u"ERROR: %x Could not locate GOP! :(\r\n", status);
     return status;
   }
 
@@ -570,7 +657,7 @@ EFI_STATUS setGraphicsMode(void) {
     status = gop->QueryMode(gop, gop->Mode->Mode, &modeInfoSize, &modeInfo);
 
     if(EFI_ERROR(status)) {
-      eprintf(u"ERROR: %x Could not Query GOP Mode %u\r\n", status, gop->Mode->Mode);
+      error(u"ERROR: %x Could not Query GOP Mode %u\r\n", status, gop->Mode->Mode);
       //return status;
     }
 
@@ -787,7 +874,7 @@ EFI_STATUS testMouse(void) {
   status = bs->LocateProtocol(&gopGuid, NULL, (VOID **)&gop);
 
   if(EFI_ERROR(status)) {
-    eprintf(u"ERROR: %x Could not locate GOP! :(\r\n", status);
+    error(u"ERROR: %x Could not locate GOP! :(\r\n", status);
     return status;
   }
 
@@ -796,7 +883,7 @@ EFI_STATUS testMouse(void) {
   // Use LocateHandleBuffer() to find all SPP and get a valid one.
   status = bs->LocateHandleBuffer(ByProtocol, &sppGuid, NULL, &numHandles, &handleBuffer);
   if (EFI_ERROR(status)) {
-    eprintf(u"\r\nERROR: %x; Could not locate SPP handle buffer!\r\n", status);
+    error(u"\r\nERROR: %x; Could not locate SPP handle buffer!\r\n", status);
   }
 
   cout->ClearScreen(cout);
@@ -807,7 +894,7 @@ EFI_STATUS testMouse(void) {
     status = bs->OpenProtocol(handleBuffer[i], &sppGuid, (VOID **)&spp[i], image, NULL, EFI_OPEN_PROTOCOL_BY_HANDLE_PROTOCOL);
 
     if(EFI_ERROR(status)) {
-      eprintf(u"\r\nERROR: %x; Could not Open SPP on handle!\r\n", status);
+      error(u"\r\nERROR: %x; Could not Open SPP on handle!\r\n", status);
       continue;
     }
 
@@ -836,7 +923,7 @@ EFI_STATUS testMouse(void) {
     } // Found a valid mode
   }
 
-  if(!foundMode) eprintf(u"\r\nERROR: Could not find any valid SPP mode!\r\n");  
+  if(!foundMode) error(u"\r\nERROR: Could not find any valid SPP mode!\r\n");  
 
   // Free memory pool allocated by LocateHandleBuffer()
   bs->FreePool(handleBuffer);
@@ -848,7 +935,7 @@ EFI_STATUS testMouse(void) {
 
   status = bs->LocateHandleBuffer(ByProtocol, &appGuid, NULL, &numHandles, &handleBuffer);
   if (EFI_ERROR(status)) {
-    eprintf(u"\r\nERROR: %x; Could not locate APP handle buffer!\r\n", status);
+    error(u"\r\nERROR: %x; Could not locate APP handle buffer!\r\n", status);
   }
 
   // Open all APP for each handle.
@@ -856,7 +943,7 @@ EFI_STATUS testMouse(void) {
     status = bs->OpenProtocol(handleBuffer[i], &appGuid, (VOID **)&app[i], image, NULL, EFI_OPEN_PROTOCOL_BY_HANDLE_PROTOCOL);
 
     if(EFI_ERROR(status)) {
-      eprintf(u"\r\nERROR: %x; Could not Open APP on handle!\r\n", status);
+      error(u"\r\nERROR: %x; Could not Open APP on handle!\r\n", status);
       continue;
     }
 
@@ -887,10 +974,10 @@ EFI_STATUS testMouse(void) {
     } // Found a valid mode
   }
 
-  if(!foundMode) eprintf(u"\r\nERROR: Could not find any valid APP mode!\r\n");
+  if(!foundMode) error(u"\r\nERROR: Could not find any valid APP mode!\r\n");
 
   if(numProtocols == 0 ) {
-    eprintf(u"\r\nERROR: Could not find any S/APPs!\r\n");
+    error(u"\r\nERROR: Could not find any S/APPs!\r\n");
     getKey();
     return 1;
   }
@@ -1092,7 +1179,7 @@ EFI_STATUS readEspFiles(void) {
   status = bs->OpenProtocol(image, &lipGuid, (VOID **)&lip, image, NULL, EFI_OPEN_PROTOCOL_BY_HANDLE_PROTOCOL);
 
   if(EFI_ERROR(status)) {
-    eprintf(u"Error %x: Could not open Loaded Image Protocol\r\n", status);
+    error(u"Error %x: Could not open Loaded Image Protocol\r\n", status);
     return status;
   }
 
@@ -1103,7 +1190,7 @@ EFI_STATUS readEspFiles(void) {
   status = bs->OpenProtocol(lip->DeviceHandle, &sfspGuid, (VOID **)&sfsp, image, NULL, EFI_OPEN_PROTOCOL_BY_HANDLE_PROTOCOL);
   
   if(EFI_ERROR(status)) {
-    eprintf(u"Error %x: Could not open Simple FileSystem Protocol\r\n", status);
+    error(u"Error %x: Could not open Simple FileSystem Protocol\r\n", status);
     return status;
   }
   
@@ -1112,7 +1199,7 @@ EFI_STATUS readEspFiles(void) {
   status = sfsp->OpenVolume(sfsp, &dirp);
 
   if(EFI_ERROR(status)) {
-    eprintf(u"Error %x: Could not open volume for root directory\r\n", status);
+    error(u"Error %x: Could not open volume for root directory\r\n", status);
     goto cleanup;
   }
 
@@ -1137,6 +1224,7 @@ EFI_STATUS readEspFiles(void) {
     while(buffSize > 0) {
       // Got next dir entry, print info
       numEntries++;
+
       if(csrRow == cout->Mode->CursorRow){
         // Highlight row cursor/user is on
         cout->SetAttribute(cout, EFI_TEXT_ATTR(HL_FG_COLOR, HL_BG_COLOR));
@@ -1157,6 +1245,7 @@ EFI_STATUS readEspFiles(void) {
     switch (key.ScanCode) {
       case SCANCODE_ESC: {
         // ESC key, go to main menu
+        dirp->Close(dirp);
         goto cleanup;
       }
       break;
@@ -1169,19 +1258,116 @@ EFI_STATUS readEspFiles(void) {
       }
       break;
       default: {
-        if (key.UnicodeChar == u"\r") {
+        if (key.UnicodeChar == u'\r') {
           // Enter key:
           //  for a directory, enter that directory and iterate the loop.
           //  for a file, print file contents on screen.
-          // TODO:
           // Get directory entry under cursor row
           dirp->SetPosition(dirp, 0);
-
+          INT32 i = 0;
           do {
             buffSize = sizeof fileInfo;
             dirp->Read(dirp, &buffSize, &fileInfo);
-          } while (cout->Mode->CursorRow < csrRow);
+            i++;
+          } while (i < csrRow);
+
+          // open directory
+          if(fileInfo.Attribute & EFI_FILE_DIRECTORY) {
+            EFI_FILE_PROTOCOL *newDir;
+            status = dirp->Open(dirp, &newDir, fileInfo.FileName, EFI_FILE_MODE_READ, 0);
+
+            if(EFI_ERROR(status)) {
+              error(u"Error %x: Could not open new directory %s\r\n", status, fileInfo.FileName);
+              goto cleanup;
+            }
+
+            dirp->Close(dirp);
+            dirp = newDir;
+
+            csrRow = 1; // reeset user row to first entry in new directory
+
+            // Set path for current dir
+            if(!strcmp_u16(fileInfo.FileName, u".", 2)) {
+              // Current directory, Do nothing
+            } else if (!strcmp_u16(fileInfo.FileName, u"..", 3)) {
+              // Parent directory, go back up.
+              CHAR16 *pos = strrchr_u16(currentDirectory, u'/');
+              if (pos == currentDirectory) pos++;
+              *pos = u'\0';
+            } else {
+              // Go into nested directory, add onto current string
+              if(currentDirectory[1] != u'\0') {
+                strcat_u16(currentDirectory, u"/");
+              }
+              strcat_u16(currentDirectory, fileInfo.FileName);
+            }
+            continue; // Continue overall loop and print new dir entries
+          } 
+
+          // Else this is a file, print contents
+          // Allocate buffer for file
+          VOID *buffer = NULL;
+          buffSize = fileInfo.FileSize;
+          status = bs->AllocatePool(EfiLoaderData, buffSize, &buffer);
+
+          if(EFI_ERROR(status)) {
+              error(u"Error %x: Could not allocate memory for file %s\r\n", status, fileInfo.FileName);
+              goto cleanup;
+          }
+
+          // Open File
+          EFI_FILE_PROTOCOL *file;
+          status = dirp->Open(dirp, &file, fileInfo.FileName, EFI_FILE_MODE_READ, 0);
+
+          if(EFI_ERROR(status)) {
+              error(u"Error %x: Could not open file %s\r\n", status, fileInfo.FileName);
+              goto cleanup;
+          }
+
+          // Read file into buffer
+          buffSize = fileInfo.FileSize;
+          status = dirp->Read(file, &buffSize, buffer);
+          if(EFI_ERROR(status)) {
+              error(u"Error %x: Could not read file %s into buffer.\r\n", status, fileInfo.FileName);
+              goto cleanup;
+          }
+
+          if(buffSize != fileInfo.FileSize) {
+            error(
+              u"Error: Could not read all file %s into buffer.\r\n"
+              u"Bytes read: %u, Expected: %u\r\n",
+              fileInfo.FileName,
+              buffSize,
+              fileInfo.FileSize
+            );
+            goto cleanup;
+          }
+
+          // Print buffer
+          printf(u"\r\nFile Contents:\r\n");
           
+          char *pos = (char *)buffer;
+          for(UINTN bytes = buffSize; bytes > 0; bytes--) {
+            CHAR16 str[2];
+            str[0] = *pos;
+            str[1] = u'\0';
+            if(*pos == '\n') {
+              // Convert LF newline to CRLF
+              printf(u"\r\n", str);
+            } else {
+              printf(u"%s", str);
+            }
+            pos++;
+          }
+          printf(u"\r\n\r\nPress any key to continue...\r\n");
+          getKey();
+          
+
+          // Free memory pool
+          bs->FreePool(buffer);
+
+          // Close file handle
+          dirp->Close(file);
         }
       }
       break;
@@ -1196,4 +1382,133 @@ EFI_STATUS readEspFiles(void) {
   bs->CloseProtocol(image, &lipGuid, image, NULL);
   
   return status;
-} 
+}
+
+// =====================
+// Get Media ID value for this running this image
+// =====================
+EFI_STATUS getDiskImageMediaID(UINT32 *mediaID) {
+  EFI_STATUS status = EFI_SUCCESS;
+
+  EFI_GUID lipGuid = EFI_LOADED_IMAGE_PROTOCOL_GUID;
+  EFI_LOADED_IMAGE_PROTOCOL *lip = NULL;
+  status = bs->OpenProtocol(image, &lipGuid, (VOID **)&lip, image, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL);
+
+  if(EFI_ERROR(status)) {
+    error(u"ERROR: %x; Could not open Loaded Image protocol\r\n", status);
+    goto done;
+  }
+
+  EFI_GUID bipGuid = EFI_BLOCK_IO_PROTOCOL_GUID;
+  EFI_BLOCK_IO_PROTOCOL *bip = NULL;
+  status = bs->OpenProtocol(lip->DeviceHandle, &bipGuid, (VOID **)&bip, image, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL);
+  if(EFI_ERROR(status)) {
+    error(u"ERROR: %x; Could not open Block IO Protocol for this loaded image.\r\n", status);
+    goto done;
+  }
+
+  *mediaID = bip->Media->MediaId;
+
+  done:
+  return status;
+}
+
+// =================
+// Print Block IO Partitions using Block IO and Partition Info Protocols
+// =================
+EFI_STATUS printBlockIoPartitions(void) {
+  EFI_STATUS status = EFI_SUCCESS;
+
+  cout->ClearScreen(cout);
+
+  EFI_BLOCK_IO_PROTOCOL *bip;
+  EFI_GUID bipGuid = EFI_BLOCK_IO_PROTOCOL_GUID;
+  UINTN numHandles = 0;
+  EFI_HANDLE *handleBuffer = NULL;
+  
+  // Get media ID for this disk image first, to compare to others in output
+  UINT32 thisImageMediaId = 0;
+  status = getDiskImageMediaID(&thisImageMediaId);
+  if(EFI_ERROR(status)) {
+    error(u"ERROR: %x; Could not get disk image media ID.\r\n", status);
+    return status;
+  }
+
+  // Loop through and print all partition info found
+  status = bs->LocateHandleBuffer(ByProtocol, &bipGuid, NULL, &numHandles, &handleBuffer);
+  if(EFI_ERROR(status)) {
+    error(u"Error: %x; Could not locate Block IO Protocols.\r\n", status);
+    return status;
+  }
+  
+  UINT32 lastMediaId = -1; // Keep track of currently opened Media info
+  for(UINTN i = 0; i < numHandles; i++){
+    status = bs->OpenProtocol(handleBuffer[i], &bipGuid, (VOID **)&bip, image, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL);
+    if(EFI_ERROR(status)) {
+      error(u"Error: %x; Could not open any Block IO protocol on handle %u\r\n", status, i);
+      continue;
+    }
+
+    // Print Block IO Media Info for this Disk/Partition
+    if(lastMediaId != bip->Media->MediaId) {
+      lastMediaId = bip->Media->MediaId;
+      printf(
+        u"Media ID %u %s", 
+        lastMediaId, 
+        (lastMediaId == thisImageMediaId ? u"(Disk Image)\r\n" : u"\r\n")
+      );
+    }
+    
+    if(bip->Media->LastBlock == 0) {
+      bs->CloseProtocol(handleBuffer[i], &bipGuid, image, NULL);
+      continue;
+    }
+
+    printf(
+      u"Removable: %s, Present: %s, Log.Part.: %s, Read Only: %s, Write Caching: %s,\r\n"
+      u"Block Size: %u, IO Alignment: %u, Last Block: %u, Lowest Aligned LBA: %u,\r\n"
+      u"Log.Blocks/Phys.Block: %u, Optimal Transfer Length Granularity: %u\r\n",
+      BOOL_TO_YN(bip->Media->RemovableMedia),
+      BOOL_TO_YN(bip->Media->MediaPresent),
+      BOOL_TO_YN(bip->Media->LogicalPartition),
+      BOOL_TO_YN(bip->Media->ReadOnly),
+      BOOL_TO_YN(bip->Media->WriteCaching),
+      bip->Media->BlockSize,
+      bip->Media->IoAlign,
+      bip->Media->LastBlock,
+      bip->Media->LowestAlignedLba,
+      bip->Media->LogicalBlocksPerPhysicalBlock,
+      bip->Media->OptimalTransferLengthGranularity
+    );
+
+    // Print type of partition e.g ESP or Data, or Other
+    if (!bip->Media->LogicalPartition) printf(u"<Entire Disk>\r\n");
+    else {
+      // Get partition info protocol for this partition
+      EFI_GUID pipGuid = EFI_PARTITION_INFO_PROTOCOL_GUID;
+      EFI_PARTITION_INFO_PROTOCOL *pip = NULL;
+      status = bs->OpenProtocol(handleBuffer[i], &pipGuid, (VOID **)&pip, image, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL);
+      if(EFI_ERROR(status)) {
+        error(u"\r\nError: %x; Could not open partition info protocol on handle %u.\r\n", status, i);
+      } else {
+        if      (pip->Type == PARTITION_TYPE_OTHER )  printf(u"<Other type>\r\n");
+        else if (pip->Type == PARTITION_TYPE_MBR)     printf(u"<MBR>\r\n");
+        else if (pip->Type == PARTITION_TYPE_GPT) {
+          if (pip->System == 1) printf(u"<EFI System Partition>\r\n");
+          else {
+            // Compare Gpt.PartitionTypeGUID with known values
+            EFI_GUID dataGuid = BASIC_DATA_GUID;
+            if(!memcmp(&pip->Info.Gpt.PartitionTypeGUID, &dataGuid, sizeof(EFI_GUID))) printf(u"<Basic Data>\r\n");
+            else printf(u"Other GPT Type>\r\n");
+          }
+        }
+      }
+    }
+    printf(u"\r\n");
+  }
+
+  printf(u"Press any key to go back...");
+  getKey();
+  return status;
+}
+
