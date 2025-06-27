@@ -19,6 +19,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     u"Test Mouse",
     u"Read ESP Files",
     u"Print Block IO Partitions",
+    u"Read file from Data Partition"
   };
 
   EFI_STATUS (*menuFuncs[])(void) = {
@@ -27,6 +28,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     testMouse,
     readEspFiles,
     printBlockIoPartitions,
+    readDataPartitionFile,
   };
 
   // Screen loop

@@ -621,6 +621,68 @@ EFI_STATUS setTextMode(void) {
 }
 
 // =================
+// Read a fully qualified file path in the ESP into an output buffer.
+// File path must start with root '\', escaped as needed by the caller with '\\'.
+// Returns: non-null pointer to allocated buffer with file data, allocated with Boot Services AllocatePool(),
+// or NULL if not found or error.
+// NOTE: Caller will have to use FreePool() on returned buffer to free allocated memory.
+// =================
+VOID *readEspFileToBuffer(CHAR16 *path) {
+  VOID *fileBuffer = NULL;
+  EFI_STATUS status = EFI_SUCCESS;
+
+  // Get loaded image protocol first to grab device handle to use simple file system protocol on
+  EFI_GUID lipGuid = EFI_LOADED_IMAGE_PROTOCOL_GUID;
+  EFI_LOADED_IMAGE_PROTOCOL *lip = NULL;
+  status = bs->OpenProtocol(
+    image, &lipGuid, (VOID **)&lip, image, NULL, EFI_OPEN_PROTOCOL_BY_HANDLE_PROTOCOL
+  );
+
+  if(EFI_ERROR(status)) {
+    error(u"ERROR: %x; Could not open Loaded Image Protocol!\r\n", status);
+    goto cleanup;
+  }
+
+  // Get Simple File System Protocol for device handle for this loaded image, to open the root directory for the ESP.
+  EFI_GUID sfspGuid = EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID;
+  EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *sfsp = NULL;
+
+  status = bs->OpenProtocol(lip->DeviceHandle, &sfspGuid, (VOID **)&sfsp, image, NULL, EFI_OPEN_PROTOCOL_BY_HANDLE_PROTOCOL);
+  
+  if(EFI_ERROR(status)) {
+    error(u"Error %x: Could not open Simple FileSystem Protocol\r\n", status);
+    goto cleanup;
+  }
+
+  // Open the root directory via OpenVolume()
+  EFI_FILE_PROTOCOL *root = NULL;
+  status = sfsp->OpenVolume(sfsp, &root);
+  if(EFI_ERROR(status)) {
+    error(u"Error %x: Could not open volume for root directory in ESP!\r\n", status);
+    goto cleanup;
+  }
+
+  // Open fle in input path
+  EFI_FILE_PROTOCOL *file = NULL;
+  status = root->Open(root, &file, path, EFI_FILE_MODE_READ, 0);
+  if(EFI_ERROR(status)) {
+    error(u"Error %x: Could not open file '%s' for reading!\r\n", status, path);
+    goto cleanup;
+  }
+
+  // Close open file/dir pointers
+  root->Close(root);
+  file->Close(file);
+
+  cleanup:
+ 
+  // Close open protocols
+  bs->CloseProtocol(lip->DeviceHandle, &sfspGuid, image, NULL);
+  bs->CloseProtocol(image, &lipGuid, image, NULL);
+  return fileBuffer;
+}
+
+// =================
 // Set graphics mode
 // =================
 EFI_STATUS setGraphicsMode(void) {
@@ -1512,3 +1574,26 @@ EFI_STATUS printBlockIoPartitions(void) {
   return status;
 }
 
+// =================
+// Read Files from Data Partition
+// =================
+EFI_STATUS readDataPartitionFile(void) {
+  cout->ClearScreen(cout);
+  // Print file info for TEST.TXT from path /EFI/BOOT/TEST.TXT
+  CHAR16 *fileName = u"\\EFI\\BOOT\\TEST.TXT";
+  VOID *fileBuffer = readEspFileToBuffer(fileName);
+  if(fileBuffer == NULL) {
+    error(u"ERROR: Could not find or read %s from data partition to buffer.\r\n", fileName);
+    return 1;
+  }
+
+  // Parse data from TEST.TXT file to get file position and length
+
+
+  // Read and print actial file info from data partition
+
+
+  //
+  EFI_STATUS status = EFI_SUCCESS; 
+  return status;
+}
