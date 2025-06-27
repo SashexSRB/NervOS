@@ -93,6 +93,53 @@ INTN memcmp(VOID *m1, VOID *m2, UINTN len) {
 }
 
 // =================
+// strcmp Compare two strings, stop at first point that they dont equal.
+// =================
+INTN strcmp(char *s1, char *s2) {
+  UINTN i = 0;
+  while (s1 && s2 && *s1 && *s2) {
+    if(s1[i] != s2[i]) break;
+    i++;
+  }
+  return (INTN)(s1[i]) - (INTN)(s2[i]);
+}
+
+// =================
+// strLen
+// =================
+UINTN strLen(char *str) {
+  UINTN len = 0;
+  while(*str) {
+    len++;
+    str++;
+  }
+  return len;
+}
+
+// =================
+// Substring function
+// =================
+char *substr(char *haystack, char *needle) {
+  if(!needle) return haystack;
+
+  char *p = haystack;
+  while(*p) {
+    if(*p == *needle) {
+      if(!memcmp(p, needle, strLen(needle))) return p;
+    }
+    p++;
+  }
+  return NULL;
+}
+
+// =================
+// isDigit
+// =================
+BOOLEAN isDigit(char c) {
+  return (c >= u'0' && c <= u'9');
+}
+
+// =================
 // Copy string CHAR16 strcpy
 // =================
 CHAR16 *strcpy_u16(CHAR16 *dst, CHAR16 *src) {
@@ -627,17 +674,14 @@ EFI_STATUS setTextMode(void) {
 // or NULL if not found or error.
 // NOTE: Caller will have to use FreePool() on returned buffer to free allocated memory.
 // =================
-VOID *readEspFileToBuffer(CHAR16 *path) {
+VOID *readEspFileToBuffer(CHAR16 *path, UINTN *fileSize) {
   VOID *fileBuffer = NULL;
-  EFI_STATUS status = EFI_SUCCESS;
+  EFI_STATUS status;
 
   // Get loaded image protocol first to grab device handle to use simple file system protocol on
   EFI_GUID lipGuid = EFI_LOADED_IMAGE_PROTOCOL_GUID;
   EFI_LOADED_IMAGE_PROTOCOL *lip = NULL;
-  status = bs->OpenProtocol(
-    image, &lipGuid, (VOID **)&lip, image, NULL, EFI_OPEN_PROTOCOL_BY_HANDLE_PROTOCOL
-  );
-
+  status = bs->OpenProtocol(image, &lipGuid, (VOID **)&lip, image, NULL, EFI_OPEN_PROTOCOL_BY_HANDLE_PROTOCOL);
   if(EFI_ERROR(status)) {
     error(u"ERROR: %x; Could not open Loaded Image Protocol!\r\n", status);
     goto cleanup;
@@ -646,9 +690,7 @@ VOID *readEspFileToBuffer(CHAR16 *path) {
   // Get Simple File System Protocol for device handle for this loaded image, to open the root directory for the ESP.
   EFI_GUID sfspGuid = EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID;
   EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *sfsp = NULL;
-
   status = bs->OpenProtocol(lip->DeviceHandle, &sfspGuid, (VOID **)&sfsp, image, NULL, EFI_OPEN_PROTOCOL_BY_HANDLE_PROTOCOL);
-  
   if(EFI_ERROR(status)) {
     error(u"Error %x: Could not open Simple FileSystem Protocol\r\n", status);
     goto cleanup;
@@ -669,17 +711,65 @@ VOID *readEspFileToBuffer(CHAR16 *path) {
     error(u"Error %x: Could not open file '%s' for reading!\r\n", status, path);
     goto cleanup;
   }
+  // Something is broken here
+  // Get info for file, to grab size
+  EFI_FILE_INFO fileInfo;
+  EFI_GUID fileInfoGuid = EFI_FILE_INFO_ID;
+  UINTN bufferSize = sizeof(EFI_FILE_INFO);
+  status = file->GetInfo(file, &fileInfoGuid, &bufferSize, &fileInfo);
+  if(EFI_ERROR(status)) {
+    error(u"Error %x: Could not get file info for '%s'!\r\n", status, path);
+    goto fileCleanup;
+  }
 
+  // Allocate buffer for file
+  bufferSize = fileInfo.FileSize;
+  status = bs->AllocatePool(EfiLoaderData, bufferSize, &fileBuffer);
+  if(EFI_ERROR(status) || bufferSize != fileInfo.FileSize) {
+    error(u"Error %x: Could not allocate memory for '%s'!\r\n", status, path);
+    goto fileCleanup;
+  }
+
+  if(EFI_ERROR(status)) {
+    error(u"Error %x: Could not get file info for file %s!\r\n", status, path);
+    goto fileCleanup;
+  } 
+
+  // Read file into buffer
+  status = file->Read(file, &bufferSize, fileBuffer);
+  if(EFI_ERROR(status) || bufferSize != fileInfo.FileSize) {
+    error(u"Error %x: Could not read file '%s' into buffer!\r\n", status, path);
+    goto fileCleanup;
+  }
+  
+  // Set output file size in buffer
+  *fileSize = bufferSize;
+  
+  fileCleanup:
   // Close open file/dir pointers
   root->Close(root);
   file->Close(file);
 
   cleanup:
- 
   // Close open protocols
   bs->CloseProtocol(lip->DeviceHandle, &sfspGuid, image, NULL);
   bs->CloseProtocol(image, &lipGuid, image, NULL);
-  return fileBuffer;
+  return fileBuffer; // will return buffer with file data, or NULL if error
+}
+
+// =================
+// Read disk LBA to buffer
+// Reads a single LBA (Logical Block Address) from the disk into a buffer.
+// =================
+void *readDiskLbasToBuffer(UINTN diskLba, UINTN dataSize, UINT32 diskMediaID) {
+  VOID *buffer = NULL;
+  (void)diskLba, (void)dataSize, (void)diskMediaID;
+
+
+
+
+
+  return buffer; // will return buffer with LBA data, or NULL if error
 }
 
 // =================
@@ -1578,22 +1668,69 @@ EFI_STATUS printBlockIoPartitions(void) {
 // Read Files from Data Partition
 // =================
 EFI_STATUS readDataPartitionFile(void) {
-  cout->ClearScreen(cout);
+  VOID *diskBuffer = NULL;
+  VOID *fileBuffer = NULL;
   // Print file info for TEST.TXT from path /EFI/BOOT/TEST.TXT
-  CHAR16 *fileName = u"\\EFI\\BOOT\\TEST.TXT";
-  VOID *fileBuffer = readEspFileToBuffer(fileName);
+  CHAR16 *fileName = u"\\EFI\\BOOT\\FILE.TXT";
+
+  cout->ClearScreen(cout);
+
+  UINTN bufferSize = 0;
+  fileBuffer = readEspFileToBuffer(fileName, &bufferSize);
   if(fileBuffer == NULL) {
     error(u"ERROR: Could not find or read %s from data partition to buffer.\r\n", fileName);
-    return 1;
+    goto exit;
   }
 
-  // Parse data from TEST.TXT file to get file position and length
+  // Parse data from TEST.TXT file to get disk LBA and file size
+  UINTN fileSize = 0, diskLba = 0;
+  char *strPos = substr(fileBuffer, "FILE_SIZE=");
+  if(!strPos) {
+    error(u"ERROR: Could not find file size for file %s.\r\n", fileName);
+    goto cleanup;
+  }
 
+  // Use an atoi function instead?
+  strPos += strLen("FILE_SIZE=");
+  while (isDigit(*strPos)) {
+    fileSize = fileSize * 10 + *strPos - '0'; // Convert char -> int, add next decimal digit to number
+    strPos++;
+  }
+
+  strPos = substr(fileBuffer, "DISK_LBA=");
+  if(!strPos) {
+    error(u"ERROR: Could not find disk lba value from buffer %s.\r\n", fileName);
+    goto cleanup;
+  }
+
+  // Use an atoi function instead?
+  strPos += strLen("DISK_LBA=");
+  while (isDigit(*strPos)) {
+    diskLba = diskLba * 10 + *strPos - '0'; // Convert char -> int, add next decimal digit to number
+    strPos++;
+  }
+
+  //printf(u"File size: %u, Disk LBA: %u\r\n", fileSize, diskLba);
+
+  // Read disk lbas for file into buffer
+  UINT32 imageMediaID = 0;
+  diskBuffer = readDiskLbasToBuffer(diskLba, fileSize, imageMediaID);
+  if(!diskBuffer) {
+    error(u"ERROR: Could not find or read data partition file to buffer.\r\n");
+    bs->FreePool(diskBuffer); // Free memory allocated for disk LBA buffer
+    goto exit;
+  }
+
+  // Print data partition file contents (assuming text file)
+
+  // Final cleanup
+  cleanup:
+  bs->FreePool(fileBuffer); // Free memory allocated for ESP file
+
+  exit:
+  printf(u"\r\n\r\nPress any key to continue...\r\n");
+  getKey();
 
   // Read and print actial file info from data partition
-
-
-  //
-  EFI_STATUS status = EFI_SUCCESS; 
-  return status;
+  return EFI_SUCCESS;
 }
