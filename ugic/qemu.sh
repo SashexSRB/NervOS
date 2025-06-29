@@ -3,7 +3,7 @@
 # Unbind the USB mouse from host (optional but helps avoid conflicts)
 
 # Launch QEMU with USB passthrough
-sudo qemu-system-x86_64 \
+qemu-system-x86_64 \
 -drive format=raw,file=test.hdd \
 -bios bios64.bin \
 -m 256M \

@@ -761,14 +761,75 @@ VOID *readEspFileToBuffer(CHAR16 *path, UINTN *fileSize) {
 // Read disk LBA to buffer
 // Reads a single LBA (Logical Block Address) from the disk into a buffer.
 // =================
-void *readDiskLbasToBuffer(UINTN diskLba, UINTN dataSize, UINT32 diskMediaID) {
+VOID *readDiskLbasToBuffer(EFI_LBA diskLba, UINTN dataSize, UINT32 diskMediaID) {
   VOID *buffer = NULL;
-  (void)diskLba, (void)dataSize, (void)diskMediaID;
+  EFI_STATUS status = EFI_SUCCESS;
 
+  // Loop through and get Block IO Protocol for input media ID, for entire disk. 
+  // NOTE: This assumnes that the first block io found with logical partition false is the disk entirely itself.
+  EFI_GUID bipGuid = EFI_BLOCK_IO_PROTOCOL_GUID;
+  EFI_BLOCK_IO_PROTOCOL *bip = NULL;
+  UINTN numHandles = 0;
+  EFI_HANDLE *handleBuffer = NULL;
+  
+  status = bs->LocateHandleBuffer(ByProtocol, &bipGuid, NULL, &numHandles, &handleBuffer);
+  if(EFI_ERROR(status)) {
+    error(u"ERROR: %x Could not locate Block IO Protocol handles!\r\n", status);
+    return buffer;
+  }
 
+  BOOLEAN found = FALSE;
+  UINTN i = 0;
+  for (i = 0; i < numHandles; i++) {
+    // Open Block IO Protocol for each handle
+    status = bs->OpenProtocol(handleBuffer[i], &bipGuid, (VOID **)&bip, image, NULL, EFI_OPEN_PROTOCOL_BY_HANDLE_PROTOCOL);
+    if(EFI_ERROR(status)) {
+      error(u"ERROR: %x Could not open Block IO Protocol for handle %u!\r\n", status, i);
+      bs->CloseProtocol(handleBuffer[i], &bipGuid, image, NULL);
+      continue; // Try next handle
+    }
 
+    if(bip->Media->MediaId == diskMediaID && !bip->Media->LogicalPartition){
+      found = TRUE;
+      break;
+    }
+    bs->CloseProtocol(handleBuffer[i], &bipGuid, image, NULL);
+  }
 
+  if(!found) {
+    error(u"ERROR: %x; Could not find Block IO Protocol for disk with ID: %u!\r\n", status, diskMediaID);
+    return buffer;
+  } 
 
+  // Get Disk IO Protocol on the same device as block IO Protocol
+  EFI_GUID dipGuid = EFI_DISK_IO_PROTOCOL_GUID;
+  EFI_DISK_IO_PROTOCOL *dip = NULL;
+
+  status = bs->OpenProtocol(handleBuffer[i], &dipGuid, (VOID **)&dip, image, NULL, EFI_OPEN_PROTOCOL_BY_HANDLE_PROTOCOL);
+
+  if(EFI_ERROR(status)) {
+    error(u"ERROR: %x Could not open Disk IO Protocol on handle: %u!\r\n", status, i);
+    goto cleanup;
+  }
+
+  // Allocate buffer for data
+  status = bs->AllocatePool(EfiLoaderData, dataSize, &buffer);
+  if(EFI_ERROR(status) || buffer == NULL) {
+    error(u"ERROR: %x Could not allocate buffer for disk data!\r\n", status);
+    bs->CloseProtocol(handleBuffer[i], &dipGuid, image, NULL);
+    goto cleanup;
+  }
+
+  // Use Disk IO Read to read into allocated buffer
+  status = dip->ReadDisk(dip, diskMediaID, diskLba * bip->Media->BlockSize, dataSize, buffer);
+  if(EFI_ERROR(status)) {
+    error(u"ERROR: %x Could not read disk LBAs into buffer!\r\n", status);
+  }
+
+  bs->CloseProtocol(handleBuffer[i], &dipGuid, image, NULL); // Close Block IO Protocol for this handle
+
+  cleanup: 
+  bs->CloseProtocol(handleBuffer[i], &bipGuid, image, NULL);
   return buffer; // will return buffer with LBA data, or NULL if error
 }
 
@@ -1667,9 +1728,15 @@ EFI_STATUS printBlockIoPartitions(void) {
 // =================
 // Read Files from Data Partition
 // =================
-EFI_STATUS readDataPartitionFile(void) {
+EFI_STATUS loadKernel(void) {
   VOID *diskBuffer = NULL;
   VOID *fileBuffer = NULL;
+  EFI_STATUS status = EFI_SUCCESS;
+  UINTN fileSize = 0;
+  UINTN diskLba = 0;
+  char *strPos = NULL;
+  char *dataFile = "test.txt"; // change to whatever kernel is called
+  CHAR16 *dataFileName = u"test.txt";
   // Print file info for TEST.TXT from path /EFI/BOOT/TEST.TXT
   CHAR16 *fileName = u"\\EFI\\BOOT\\FILE.TXT";
 
@@ -1682,9 +1749,15 @@ EFI_STATUS readDataPartitionFile(void) {
     goto exit;
   }
 
+  // Search for file based on file name
+  strPos = substr(fileBuffer, dataFile);
+  if(!strPos) {
+    error(u"ERROR: Could not find file %s in data partition.\r\n", dataFile);
+    goto cleanup;
+  }
+
   // Parse data from TEST.TXT file to get disk LBA and file size
-  UINTN fileSize = 0, diskLba = 0;
-  char *strPos = substr(fileBuffer, "FILE_SIZE=");
+  strPos = substr(fileBuffer, "FILE_SIZE=");
   if(!strPos) {
     error(u"ERROR: Could not find file size for file %s.\r\n", fileName);
     goto cleanup;
@@ -1712,8 +1785,18 @@ EFI_STATUS readDataPartitionFile(void) {
 
   //printf(u"File size: %u, Disk LBA: %u\r\n", fileSize, diskLba);
 
-  // Read disk lbas for file into buffer
+  // Get media ID(disk num for Block IO Protocol Media) for this running disk image
   UINT32 imageMediaID = 0;
+  status = getDiskImageMediaID(&imageMediaID);
+
+  if (EFI_ERROR(status)) {
+    error(u"ERROR: %x; Could not find or get MediaID value for disk image", status);
+    bs->FreePool(fileBuffer);
+    goto exit;
+  }
+
+
+  // Read disk lbas for file into buffer
   diskBuffer = readDiskLbasToBuffer(diskLba, fileSize, imageMediaID);
   if(!diskBuffer) {
     error(u"ERROR: Could not find or read data partition file to buffer.\r\n");
@@ -1721,14 +1804,30 @@ EFI_STATUS readDataPartitionFile(void) {
     goto exit;
   }
 
-  // Print data partition file contents (assuming text file)
+  // DEBUGGING: Print data partition file contents (assuming text file)
+  printf(u"\r\nDisk Contents for %s:\r\n", dataFileName);
+  
+  char *pos = (char *)diskBuffer;
+  for(UINTN bytes = fileSize; bytes > 0; bytes--) {
+    CHAR16 str[2];
+    str[0] = *pos;
+    str[1] = u'\0';
+    if(*pos == '\n') {
+      // Convert LF newline to CRLF
+      printf(u"\r\n", str);
+    } else {
+      printf(u"%s", str);
+    }
+    pos++;
+  }
 
   // Final cleanup
   cleanup:
   bs->FreePool(fileBuffer); // Free memory allocated for ESP file
+  bs->FreePool(diskBuffer); // Free memory allocated for disk LBA buffer
 
   exit:
-  printf(u"\r\n\r\nPress any key to continue...\r\n");
+  printf(u"\r\nPress any key to continue...\r\n");
   getKey();
 
   // Read and print actial file info from data partition

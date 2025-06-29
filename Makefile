@@ -8,6 +8,13 @@ TARGET = BOOTX64.EFI
 QEMU = ./qemu.sh
 TESTFILE = test.txt
 
+# Flat binary PIE kernel binary
+KERNEL_BIN = kernel.sex
+# ELF64 PIE kernel binar
+KERNEL_ELF = kernel.elf
+# PE32+ PIE kernel binary
+KERNEL_PE = kernel.pe
+
 CC = x86_64-w64-mingw32-gcc -Wl,--subsystem,10 -e efi_main
 
 LDFLAGS = \
@@ -39,6 +46,13 @@ $(TARGET): $(OBJS)
 $(TESTFILE):
 	echo TESTING > $@
 	cp $@ $(DISK_IMG_FOLDER)
+
+# TODO
+#$(KERNEL_BIN):
+
+#$(KERNEL_ELF):
+
+#$(KERNEL_PE):
 
 -include $(DEPENDS)
 
