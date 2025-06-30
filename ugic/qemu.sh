@@ -14,7 +14,7 @@ qemu-system-x86_64 \
 -usb \
 -device usb-mouse \
 -rtc base=localtime \
--net none 
-#-serial stdio
+-net none \
+-serial stdio
 
 #-bios /usr/share/OVMF/x64/OVMF.4m.fd \

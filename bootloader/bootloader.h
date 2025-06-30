@@ -19,6 +19,9 @@
 #define HL_BG_COLOR EFI_LIGHTGRAY
 #define px_LGRAY { 0xEE, 0xEE, 0xEE, 0x00 }
 #define px_BLACK { 0x00, 0x00, 0x00, 0x00 }
+#define PAGE_SIZE 4096 
+#define IMAGE_FILE_MACHINE_AMD64 0x8664
+#define IMAGE_NT_OPTIONAL_HDR64_MAGIC 0x20B // PE32+ magic number
 
 // -----------------
 //  Global vars
@@ -29,7 +32,137 @@ EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *cerr = NULL; // Console error
 EFI_BOOT_SERVICES *bs; // Boot Services
 EFI_RUNTIME_SERVICES *rs; // Runtime Services
 EFI_HANDLE image = NULL; // Image handle
+EFI_EVENT timerEvent = NULL; // Timer event for printing date/time
 
+// -----------------
+// Global Typedefs
+// -----------------
+//ELF Header - x86-64
+typedef struct {
+  struct {
+    UINT8 ei_mag0;
+    UINT8 ei_mag1;
+    UINT8 ei_mag2;
+    UINT8 ei_mag3;
+    UINT8 ei_class;
+    UINT8 ei_data;
+    UINT8 ei_version;
+    UINT8 ei_osabi;
+    UINT8 ei_abiversion;
+    UINT8 ei_pad[7];
+  } e_ident;
+
+  UINT16 e_type;
+  UINT16 e_machine;
+  UINT32 e_version;
+  UINT64 e_entry; // Entry point address
+  UINT64 e_phoff; // Program header offset
+  UINT64 e_shoff; // Section header offset
+  UINT32 e_flags;
+  UINT16 e_ehsize; // ELF header size
+  UINT16 e_phentsize; // Program header entry size
+  UINT16 e_phnum; // Number of program header entries
+  UINT16 e_shentsize; // Section header entry size
+  UINT16 e_shnum; // Number of section header entries
+  UINT16 e_shstrndx; // Section header string table index
+} __attribute__ ((packed)) ELF_Header_64;
+
+// ELF Program Header - x86-64
+typedef struct {
+  UINT32 p_type; // Type of segment
+  UINT32 p_flags; // Segment flags
+  UINT64 p_offset; // Offset in file
+  UINT64 p_vaddr; // Virtual address in memory
+  UINT64 p_paddr; // Physical address (not used)
+  UINT64 p_filesz; // Size of segment in file
+  UINT64 p_memsz; // Size of segment in memory
+  UINT64 p_align; // Alignment of segment
+} __attribute__ ((packed)) ELF_Program_Header_64;
+
+// ELF Header e_type values
+typedef enum {
+  ET_EXEC = 0x2,
+  ET_DYN = 0x3,
+} ELF_EHEADER_TYPE;
+
+// ELF Program Header p_type values
+typedef enum {
+  PT_NULL = 0x0,
+  PT_LOAD = 0x1, // Loadable
+} ELF_PHEADER_TYPE;
+
+// PE Structs/types
+// PE32+ COFF File Header
+typedef struct {
+  UINT16 Machine; // Machine type
+  UINT16 NumberOfSections; // Number of sections
+  UINT32 TimeDateStamp; // Time and date stamp
+  UINT32 PointerToSymbolTable; // Pointer to symbol table (not used)
+  UINT32 NumberOfSymbols; // Number of symbols (not used)
+  UINT16 SizeOfOptionalHeader; // Size of optional header
+  UINT16 Characteristics; // Characteristics flags
+} __attribute__ ((packed)) PE_Coff_File_Header_64;
+
+// COFF File Header Characteristics
+typedef enum {
+  IMAGE_FILE_EXECUTABLE_IMAGE = 0x0002, // Executable image
+} PE_COFF_CHARACTERISTICS;
+
+// PE32+ Optional Header
+typedef struct {
+  UINT16 Magic; // Magic number (0x20B for PE32+)
+  UINT8 MajorLinkerVersion; // Major version of linker
+  UINT8 MinorLinkerVersion; // Minor version of linker
+  UINT32 SizeOfCode; // Size of code section
+  UINT32 SizeOfInitializedData; // Size of initialized data section
+  UINT32 SizeOfUninitializedData; // Size of uninitialized data section
+  UINT32 AddressOfEntryPoint; // Entry point address
+  UINT32 BaseOfCode; // Base address of code section
+  UINT64 ImageBase; // Base address of image in memory
+  UINT32 SectionAlignment; // Section alignment in memory
+  UINT32 FileAlignment; // Section alignment in file
+  UINT16 MajorOperatingSystemVersion; // Major OS version
+  UINT16 MinorOperatingSystemVersion; // Minor OS version
+  UINT16 MajorImageVersion; // Major image version
+  UINT16 MinorImageVersion; // Minor image version
+  UINT16 MajorSubsystemVersion; // Major subsystem version
+  UINT16 MinorSubsystemVersion; // Minor subsystem version
+  UINT32 Win32VersionValue; // Reserved, must be zero
+  UINT32 SizeOfImage; // Size of image in memory
+  UINT32 SizeOfHeaders; // Size of headers in file
+  UINT32 CheckSum; // Checksum of image
+  UINT16 Subsystem; // Subsystem type
+  UINT16 DllCharacteristics; // DLL characteristics flags
+  UINT64 SizeOfStackReserve; // Size of stack reserve
+  UINT64 SizeOfStackCommit; // Size of stack commit
+  UINT64 SizeOfHeapReserve; // Size of heap reserve
+  UINT64 SizeOfHeapCommit; // Size of heap commit
+  UINT32 LoaderFlags; // Loader flags (reserved, must be zero)
+  UINT32 NumberOfRvaAndSizes; // Number of data directories
+} __attribute__ ((packed)) PE_Optional_Header_64;
+
+// Optional Header Characteristics
+typedef enum {
+  IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE = 0x0040, // DLL can be relocated at load time
+} PE_OPTIONAL_HEADER_CHARACTERISTICS;
+
+// PE32+ Section Headers - Immediately follows the optional header
+typedef struct {
+  UINT64 Name; // Section name (offset to string table)
+  UINT32 VirtualSize; // Size of section in memory
+  UINT32 VirtualAddress; // Virtual address of section in memory
+  UINT32 SizeOfRawData; // Size of section in file
+  UINT32 PointerToRawData; // Offset to section data in file
+  UINT32 PointerToRelocations; // Offset to relocations (not used)
+  UINT32 PointerToLinenumbers; // Offset to line numbers (not used)
+  UINT16 NumberOfRelocations; // Number of relocations (not used)
+  UINT16 NumberOfLinenumbers; // Number of line numbers (not used)
+  UINT32 Characteristics; // Section characteristics flags
+} __attribute__ ((packed)) PE_Section_Header_64;
+
+// -----------------
+// Mouse drawing stuff
+// -----------------
 // Mouse cursor buffer 8x8
 EFI_GRAPHICS_OUTPUT_BLT_PIXEL cursorBuffer[] = {
     px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, // Line 1
@@ -43,6 +176,11 @@ EFI_GRAPHICS_OUTPUT_BLT_PIXEL cursorBuffer[] = {
 };
 // Buffer to save FB data at cursor position
 EFI_GRAPHICS_OUTPUT_BLT_PIXEL savedBuffer[8*8] = {0};
+
+
+// ++++++++++++++++++++++++++++++++++++++++++++
+// FUNCTIONS
+// ++++++++++++++++++++++++++++++++++++++++++++
 
 // =================
 // Set global vars
@@ -60,25 +198,25 @@ void initGlbVars(EFI_HANDLE handle, EFI_SYSTEM_TABLE *systable) {
 // =================
 // memset for compling with clang/gcc (set len bytes of dst memory with int c) UNCOMMENT FOR CLANG
 // =================
-// VOID *memset(VOID *dst, UINT8 c, UINTN len) {
-//   UINT8 *p = dst;
-//   for(UINTN i = 0; i < len; i++) {
-//     p[i] = c;
-//   }
-//   return dst;
-// }
+VOID *memset(VOID *dst, UINT8 c, UINTN len) {
+  UINT8 *p = dst;
+  for(UINTN i = 0; i < len; i++) {
+    p[i] = c;
+  }
+  return dst;
+}
 
 // =================
 // memcpy for compiling with clang/gcc (set len bytes of dst memory from src) UNCOMMENT FOR CLANG
 // =================
-// VOID *memcpy(VOID *dst, VOID *src, UINTN len) {
-//   UINT8 *p = dst;
-//   UINT8 *q = src;
-//   for(UINTN i = 0; i < len; i++) {
-//     p[i] = q[i];
-//   }
-//   return dst;
-// }
+VOID *memcpy(VOID *dst, VOID *src, UINTN len) {
+  UINT8 *p = dst;
+  UINT8 *q = src;
+  for(UINTN i = 0; i < len; i++) {
+    p[i] = q[i];
+  }
+  return dst;
+}
 
 // ================
 // memcmp Compare up to len bytes of m1 and m2, stop at first point that they dont equal.
@@ -1349,7 +1487,7 @@ VOID EFIAPI printDateTime(IN EFI_EVENT event, IN VOID *Context) {
   typedef struct {
     UINT32 rows, cols;
   } TimerContext;
-
+  // 1488th line of code?? hitler reference? :D
   TimerContext context = *(TimerContext *)Context;
 
   // Save current cursor pos before printing
@@ -1426,7 +1564,6 @@ EFI_STATUS readEspFiles(void) {
   while (true) {
     cout->ClearScreen(cout);
     printf(u"%s: \r\n", currentDirectory);
-
     INT32 numEntries = 0; 
     EFI_FILE_INFO fileInfo;
 
@@ -1726,6 +1863,214 @@ EFI_STATUS printBlockIoPartitions(void) {
 }
 
 // =================
+// Load ELF64 PIE File into a new buffer and return entry point for the loaded ELF Kernel
+// =================
+VOID *loadElf(VOID *elfBuffer) {
+  ELF_Header_64 *ehdr = elfBuffer;
+
+  // Print ELF Header info
+  printf(
+    u"Type: %u, Machine: %x, Entry: %x\r\n"
+    u"PgmHdr Offset: %u, ELF Hdr Size: %u\r\n"
+    u"Pgm Entry Size: %u, Num. PgmHdrs: %u\r\n",
+    ehdr->e_type, ehdr->e_machine, ehdr->e_entry,
+    ehdr->e_phoff, ehdr->e_ehsize, 
+    ehdr->e_phentsize, ehdr->e_phnum
+  );
+
+  // Only allow PIE Files
+  if(ehdr->e_type != ET_DYN) {
+    error(u"ERROR: ELF file is not a PIE file, only ET_DYN/0x03 type is allowed.\r\n");
+    return NULL;
+  }
+
+  // Print Loadable program header info for user, and get metrics for loading
+  ELF_Program_Header_64 *phdr = (ELF_Program_Header_64 *)((UINT8 *)ehdr + ehdr->e_phoff);
+
+  UINTN maxAlignment = PAGE_SIZE;
+  UINTN memMin = UINT64_MAX, memMax = 0;
+
+  printf(u"\r\nLoadable Program Headers:\r\n");
+  for(UINT16 i = 0; i < ehdr->e_phnum; i++, phdr++) {
+    if(phdr->p_type != PT_LOAD) continue;
+
+    printf(
+      u"%u: Offset: %x, Vaddr: %x, Paddr: %x\r\n"
+      u"File Size: %x, Mem Size: %x, Align: %x\r\n",
+      (UINTN)i,
+      phdr->p_offset,
+      phdr->p_vaddr,
+      phdr->p_paddr,
+      phdr->p_filesz,
+      phdr->p_memsz,
+      phdr->p_align
+    );
+   
+    // Update max alignment as needed
+    if(maxAlignment < phdr->p_align) maxAlignment = phdr->p_align;
+
+    UINTN memBegin = phdr->p_vaddr;
+    UINTN memEnd = phdr->p_vaddr + phdr->p_memsz + maxAlignment-1;
+
+    memBegin &= ~(maxAlignment - 1); // Round down to nearest page
+    memEnd &= ~(maxAlignment - 1); // Round up to nearest page
+
+    if(memBegin < memMin) memMin = memBegin; // Round down to nearest page
+    if(memEnd > memMax) memMax = memEnd; // Round up to nearest page
+  }
+
+  UINTN maxMemoryNeeded = memMax - memMin;
+  printf(u"\r\nMemory needed for file: %x\r\n", maxMemoryNeeded);
+
+  // Allocate buffer for program headers
+  EFI_STATUS status = 0;
+  VOID *programBuffer;
+  status = bs->AllocatePool(EfiLoaderData, maxMemoryNeeded, &programBuffer);
+  if(EFI_ERROR(status)) {
+    error(u"ERROR: %x; Could not allocate memory for ELF program headers.\r\n", status);
+    return NULL;
+  }
+
+  // Zero init buffer, to ensure 0 padding for all program sections
+  memset(programBuffer, 0, maxMemoryNeeded);
+
+  // Load program headers into buffer
+  phdr = (ELF_Program_Header_64 *)((UINT8 *)ehdr + ehdr->e_phoff);
+  for(UINT16 i = 0; i < ehdr->e_phnum; i++, phdr++) {
+    if(phdr->p_type != PT_LOAD) continue;
+
+    UINTN relativeOffset = phdr->p_vaddr - memMin;
+
+    UINT8 *dst = (UINT8 *)programBuffer + relativeOffset;
+    UINT8 *src = (UINT8 *)elfBuffer + phdr->p_offset;
+    UINT32 len = phdr->p_memsz;
+    memcpy(dst, src, len);
+  }
+
+  VOID *entryPoint = (VOID *)((UINT8 *)programBuffer + (ehdr->e_entry - memMin)); // Calculate entry point address in new buffer
+  // Return entry point
+  return entryPoint;
+}
+
+// =================
+// Load PE32+ PIE File into a new buffer and return entry point for the loaded PE32+ Kernel
+// =================
+VOID *loadPe(VOID *peBuffer) {
+  // Print PE Signature
+  UINT8 peSigOffset = 0x3C; // From PE File Format
+  UINT32 peSigPos = *(UINT32 *)((UINT8 *)peBuffer + peSigOffset); // Get PE signature offset
+  UINT8 *peSig = (UINT8 *)peBuffer + peSigPos; // Get PE signature bytes
+
+  printf(u"\r\nPE Signature: [%x][%x][%x][%x]\r\n", 
+    (UINTN)peSig[0], 
+    (UINTN)peSig[1], 
+    (UINTN)peSig[2], 
+    (UINTN)peSig[3]
+  );
+  // Print Coff File Header Info
+  PE_Coff_File_Header_64 *coffHeader = (PE_Coff_File_Header_64 *)(peSig + 4);
+  printf(
+    u"Machine: %x, NumberOfSections: %u\r\n"
+    u"SizeOfOptHdr: %u, Characteristics: %x\r\n",
+    coffHeader->Machine,
+    coffHeader->NumberOfSections,
+    coffHeader->SizeOfOptionalHeader,
+    coffHeader->Characteristics
+  );
+
+  // Validate some data
+  if(coffHeader->Machine != IMAGE_FILE_MACHINE_AMD64) {
+    error(u"ERROR: PE file is not a 64-bit file, only AMD64/0x8664 type is allowed.\r\n");
+    return NULL;
+  }
+
+  if(!(coffHeader->Characteristics & IMAGE_FILE_EXECUTABLE_IMAGE)) {
+    error(u"ERROR: File is not an executable.\r\n");
+    return NULL;
+  }
+
+  // Print Optional Header Info
+  PE_Optional_Header_64 *optHeader = (PE_Optional_Header_64 *)((UINT8 *)coffHeader + sizeof(PE_Coff_File_Header_64));
+  printf(
+    u"\r\nOptional Header:\r\n"
+    u"Magic: %x, Entry Point: %x\r\n" 
+    u"Sect Align: %x, File Align: %x, Size of Image: %x\r\n"
+    u"Subsystem: %x, DllCharacteristics: %x\r\n",
+    optHeader->Magic,
+    optHeader->AddressOfEntryPoint,
+    optHeader->SectionAlignment,
+    optHeader->FileAlignment,
+    optHeader->SizeOfImage,
+    (UINTN)optHeader->Subsystem,
+    (UINTN)optHeader->DllCharacteristics
+  );
+
+  // Validate info
+  if(optHeader->Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
+    error(u"ERROR: File not a PE32+ file.\r\n");
+    return NULL;
+  }
+
+  if(!(optHeader->DllCharacteristics & IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE)) {
+    error(u"ERROR: File not a PIE.\r\n");
+    return NULL;
+  }
+
+  // Allocate buffer to load sections into
+  EFI_STATUS status = 0;
+  VOID *progBuffer = NULL;
+  status = bs->AllocatePool(EfiLoaderData, optHeader->SizeOfImage, &progBuffer);
+  if(EFI_ERROR(status)) {
+    error(u"ERROR: %x; Could not allocate memory for PE file.\r\n", status);
+    return NULL;
+  }
+
+  // Initialize buffer to 0, which should also take care of needing to 0-pad sections between raw data and virtual size
+  memset(progBuffer, 0, optHeader->SizeOfImage);
+
+  // Print section headers
+  PE_Section_Header_64 *shdr = (PE_Section_Header_64 *)((UINT8 *)optHeader + coffHeader->SizeOfOptionalHeader);
+
+  printf(u"\r\nSection Headers:\r\n");
+  for(UINT16 i = 0; i < coffHeader->NumberOfSections; i++, shdr++) {
+    printf(u"Name: ");
+    char *pos = (char *)&shdr->Name;
+    for (UINT8 j = 0; j < 8; j++) {
+      CHAR16 str[2];
+      str[0] = *pos;
+      str[1] = u'\0';
+      if(*pos == '\0') break;
+      printf(u"%s", str);
+      pos++;
+    }
+
+    printf(
+      u" VSize: %x, VAddr: %x, DataSize: %x, DataPtr: %x\r\n",
+      shdr->VirtualSize, 
+      shdr->VirtualAddress, 
+      shdr->SizeOfRawData, 
+      shdr->PointerToRawData
+    );
+  }
+
+  // Load sections into new buffer
+  shdr = (PE_Section_Header_64 *)((UINT8 *)optHeader + coffHeader->SizeOfOptionalHeader);
+  for(UINT16 i = 0; i < coffHeader->NumberOfSections; i++, shdr++) {
+    if(shdr->SizeOfRawData == 0) continue;
+
+    VOID *dst = (UINT8 *)progBuffer + shdr->VirtualAddress;
+    VOID *src = (UINT8 *)peBuffer + shdr->PointerToRawData;
+    UINTN len = shdr->SizeOfRawData;
+
+    memcpy(dst, src, len);
+  }
+  
+  // Return entry point
+  VOID *entryPoint = (UINT8 *)progBuffer + optHeader->AddressOfEntryPoint; 
+  return entryPoint;
+}
+
+// =================
 // Read Files from Data Partition
 // =================
 EFI_STATUS loadKernel(void) {
@@ -1735,8 +2080,6 @@ EFI_STATUS loadKernel(void) {
   UINTN fileSize = 0;
   UINTN diskLba = 0;
   char *strPos = NULL;
-  char *dataFile = "test.txt"; // change to whatever kernel is called
-  CHAR16 *dataFileName = u"test.txt";
   // Print file info for TEST.TXT from path /EFI/BOOT/TEST.TXT
   CHAR16 *fileName = u"\\EFI\\BOOT\\FILE.TXT";
 
@@ -1750,11 +2093,13 @@ EFI_STATUS loadKernel(void) {
   }
 
   // Search for file based on file name
-  strPos = substr(fileBuffer, dataFile);
+  strPos = substr(fileBuffer, "kernel");
   if(!strPos) {
-    error(u"ERROR: Could not find file %s in data partition.\r\n", dataFile);
+    error(u"ERROR: Could not find kernel file in data partition.\r\n");
     goto cleanup;
   }
+
+  printf(u"KERNEL INFORMATION:\r\n");
 
   // Parse data from TEST.TXT file to get disk LBA and file size
   strPos = substr(fileBuffer, "FILE_SIZE=");
@@ -1783,7 +2128,7 @@ EFI_STATUS loadKernel(void) {
     strPos++;
   }
 
-  //printf(u"File size: %u, Disk LBA: %u\r\n", fileSize, diskLba);
+  printf(u"Found file size: %u bytes. Disk LBA: %u\r\n", fileSize, diskLba);
 
   // Get media ID(disk num for Block IO Protocol Media) for this running disk image
   UINT32 imageMediaID = 0;
@@ -1795,7 +2140,6 @@ EFI_STATUS loadKernel(void) {
     goto exit;
   }
 
-
   // Read disk lbas for file into buffer
   diskBuffer = readDiskLbasToBuffer(diskLba, fileSize, imageMediaID);
   if(!diskBuffer) {
@@ -1803,24 +2147,67 @@ EFI_STATUS loadKernel(void) {
     bs->FreePool(diskBuffer); // Free memory allocated for disk LBA buffer
     goto exit;
   }
-
-  // DEBUGGING: Print data partition file contents (assuming text file)
-  printf(u"\r\nDisk Contents for %s:\r\n", dataFileName);
   
-  char *pos = (char *)diskBuffer;
-  for(UINTN bytes = fileSize; bytes > 0; bytes--) {
-    CHAR16 str[2];
-    str[0] = *pos;
-    str[1] = u'\0';
-    if(*pos == '\n') {
-      // Convert LF newline to CRLF
-      printf(u"\r\n", str);
-    } else {
-      printf(u"%s", str);
-    }
-    pos++;
+  // Set up params to send to kernel
+  typedef struct {
+    void *memoryMap; // Get memory map to fill this out
+    EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE gopMode;
+  } KernelParameters;
+
+  KernelParameters kparams = {0};
+
+  // Get GOP info for kernel params
+  EFI_GUID gopGuid = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
+  EFI_GRAPHICS_OUTPUT_PROTOCOL *gop = NULL;
+
+  status = bs->LocateProtocol(&gopGuid, NULL, (VOID **)&gop);
+  if(EFI_ERROR(status)) {
+    error(u"ERROR: %x; Could not locate GOP for kernel parameters.\r\n", status);
+    return status;
+  }
+  
+  kparams.gopMode = *gop->Mode; // Copy GOP mode info to kernel params;
+  void EFIAPI (*entryPoint)(KernelParameters) = NULL;
+
+  // Load Kernel File depending on format (initial header bytes)
+  UINT8 *hdr = diskBuffer;
+  printf(u"File Format: ");
+  printf(u"Header bytes: [%x][%x][%x][%x]\r\n", 
+    hdr[0], 
+    hdr[1], 
+    hdr[2], 
+    hdr[3]
+  );
+  
+  if(!memcmp(hdr, (UINT8[4]){0x7F, 'E', 'L', 'F'}, 4)) {
+    *(void **)&entryPoint = loadElf(diskBuffer);
+  } else if(!memcmp(hdr, (UINT8[2]){'M', 'Z'}, 2)) {
+    *(void **)&entryPoint = loadPe(diskBuffer);
+  } else {
+    printf(u"No header bytes, assuming this is a flat binary file.\r\n");
+    *(void **)&entryPoint = diskBuffer; // get around compiler warning about function vs void pointer
   }
 
+  if(!entryPoint) goto cleanup;
+
+  printf(u"Press any key to load kernel...\r\n");
+  getKey();
+
+  // Close timer event so that it does not continue to fire off
+  bs->CloseEvent(timerEvent);
+
+  // Get Memory Map
+
+  // Fill out kparams.memoryMap with memory map info
+
+  // Exit boot services before calling kernel
+
+  // Call kernel entry point with parameters
+  entryPoint(kparams);
+
+  // Should not return to this point!
+  __builtin_unreachable();
+  
   // Final cleanup
   cleanup:
   bs->FreePool(fileBuffer); // Free memory allocated for ESP file

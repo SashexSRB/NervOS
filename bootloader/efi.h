@@ -10,7 +10,7 @@
 
 #include <stdint.h>
 #include <stddef.h> // NULL
-#include <uchar.h>
+//#include <uchar.h>
 
 // UEFI Spec 2.10 section 2.4
 #define IN
@@ -41,7 +41,7 @@ typedef char     CHAR8;
 
 // UTF-16 equivalent-ish type, for UCS-2 characters
 //   codepoints <= 0xFFFF
-// typedef uint_least16_t char16_t;
+typedef uint_least16_t char16_t;
 typedef char16_t CHAR16;
 
 typedef void VOID;

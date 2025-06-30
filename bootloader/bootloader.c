@@ -47,8 +47,6 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     context.rows = rows;
     context.cols = cols;
 
-    EFI_EVENT timerEvent;
-
     // Create timer event, to print datetime on screen every second.
     bs->CreateEvent(
       EVT_TIMER | EVT_NOTIFY_SIGNAL,
