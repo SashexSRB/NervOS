@@ -1699,6 +1699,7 @@ EFI_STATUS printAcpiTables(void) {
         u"%c%c%c%c\r\n",
         tableHeader->signature[0], tableHeader->signature[1], tableHeader->signature[2], tableHeader->signature[3] 
       );
+      if (i > 0 && i % 23 == 0) getKey();
       // Print more than only signature
     }
   } else {
@@ -1846,9 +1847,15 @@ EFI_STATUS loadKernel(void) {
   // Get Memory Map
   if(EFI_ERROR(getMemoryMap(kparams.mMap))) goto cleanup;
 
-  // Exit boot services before calling kernel
-  if(EFI_ERROR(bs->ExitBootServices(image, kparams.mMap->key))) {
-    error(u"ERROR: %x; Could not exit boot services!\r\n", status);
+  UINTN retries = 0;
+  const UINTN MAX_RETRIES = 5;
+  while (EFI_ERROR(bs->ExitBootServices(image, kparams.mMap->key)) && retries < MAX_RETRIES) {
+    bs->FreePool(kparams.mMap->map);
+    if (EFI_ERROR(getMemoryMap(kparams.mMap))) goto cleanup;
+    retries++;
+  }
+  if (retries == MAX_RETRIES) {
+    error(u"ERROR: Could not exit Boot Services!\r\n");
     goto cleanup;
   }
 
