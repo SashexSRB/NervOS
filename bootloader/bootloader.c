@@ -20,6 +20,8 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     u"Read ESP Files",
     u"Print Block IO Partitions",
     u"Print Memory Map",
+    u"Print Configuration Tables",
+    u"Print ACPI Tables",
     u"Load Kernel",
   };
 
@@ -30,6 +32,8 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     readEspFiles,
     printBlockIoPartitions,
     printMemoryMap,
+    printConfigTables,
+    printAcpiTables,
     loadKernel,
   };
 

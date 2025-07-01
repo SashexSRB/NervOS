@@ -33,6 +33,22 @@ __attribute__((section(".kernel")))void EFIAPI kmain(KernelParameters params) {
     }
   }
 
-  while(1); // Infinite loop, do not return back to UEFI
+  // Test runtime services by waiting for few seconds and then shutting down
+  EFI_TIME oldTime, newTime;
+  EFI_TIME_CAPABILITIES timeCap;
+  params.RuntimeServices->GetTime(&newTime, &timeCap);
+  UINTN i = 0;
+  while (i < 5) {
+    params.RuntimeServices->GetTime(&newTime, &timeCap);
+    if (oldTime.Second != newTime.Second) {
+      i++;
+      oldTime.Second = newTime.Second;
+    }
+  }
+
+  params.RuntimeServices->ResetSystem(EfiResetShutdown, EFI_SUCCESS, 0, NULL);
+
+  // Should not return after shutting down
+  __builtin_unreachable();
 }
 

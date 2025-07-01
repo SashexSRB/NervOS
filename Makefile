@@ -48,17 +48,17 @@ $(TESTFILE):
 	cp $@ $(DISK_IMG_FOLDER)
 
 # Flat binary ELF/clang
-kernel.nx: kernel/kernel.c
-	clang -c $(CFLAGS) -fPIE -o kernel.o $<
-	ld -nostdlib -Tkernel/kernel.ld --oformat binary -pie -o $@ kernel.o
-	cp $@ $(DISK_IMG_FOLDER)
+# kernel.nx: kernel/kernel.c
+# 	clang -c $(CFLAGS) -fPIE -o kernel.o $<
+# 	ld -nostdlib -Tkernel/kernel.ld --oformat binary -pie -o $@ kernel.o
+# 	cp $@ $(DISK_IMG_FOLDER)
 
 #Flat binary MINGW GCC (PE)
-# kernel.nx: kernel/kernel.c
-# 	x86_64-w64-mingw32-gcc -c $(CFLAGS) -fPIE -o kernel.o $<
-# 	x86_64-w64-mingw32-ld -nostdlib -Tkernel/kernel.ld --image-base=0 -pie -o kernel.obj kernel.o
-# 	objcopy -O binary kernel.obj $@
-# 	cp $@ $(DISK_IMG_FOLDER)
+kernel.nx: kernel/kernel.c
+	x86_64-w64-mingw32-gcc -c $(CFLAGS) -fPIE -o kernel.o $<
+	x86_64-w64-mingw32-ld -nostdlib -Tkernel/kernel.ld --image-base=0 -pie -o kernel.obj kernel.o
+	objcopy -O binary kernel.obj $@
+	cp $@ $(DISK_IMG_FOLDER)
 
 # kernel.elf: kernel/kernel.c
 # 	clang $(CFLAGS) -fPIE -e kmain -nostdlib -o $@ $<

@@ -4,6 +4,8 @@
 #include <stdbool.h>
 // Helper definitions that are not in efi.h or the UEFI Spec
 
+#define PAD0(x) ((x) < 10 ? u"0" : u"")
+
 // -----------------
 // Global Typedefs
 // -----------------
@@ -138,10 +140,42 @@ typedef struct {
   UINT32 descriptorVersion;
 } MemoryMapInfo;
 
+// EFI Configuration Table GUIDs and string names
+typedef struct {
+  EFI_GUID guid;
+  char16_t *string;
+} EFI_Guid_String;
+
+// Default
+EFI_Guid_String configTableGuidsAndStrings[] = {
+  {EFI_ACPI_TABLE_GUID,   u"EFI_ACPI_TABLE_GUID"},
+  {ACPI_TABLE_GUID,       u"ACPI_TABLE_GUID"},
+  {SAL_SYSTEM_TABLE_GUID, u"SAL_SYSTEM_TABLE_GUID"},
+  {SMBIOS_TABLE_GUID,     u"SMBIOS_TABLE_GUID"},
+  {SMBIOS3_TABLE_GUID,    u"SMBIOS3_TABLE_GUID"},
+  {MPS_TABLE_GUID,        u"MPS_TABLE_GUID"},
+};
+
+// General ACPI description header
+typedef struct {
+  UINT8 signature[4];
+  UINT32 length;
+  UINT8 revision;
+  UINT8 checksum;
+  UINT8 OEMID[6];
+  UINT8 OEMTableID[8];
+  UINT32 OEMRevision;
+  UINT32 creatorID;
+  UINT32 creatorRevision;
+} __attribute__ ((packed)) ACPI_Description_Header;
+
 // Example Kernel Parameters
 typedef struct {
   MemoryMapInfo *mMap; // Get memory map to fill this out
   EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE gopMode;
+  EFI_RUNTIME_SERVICES *RuntimeServices;
+  EFI_CONFIGURATION_TABLE *ConfigurationTable;
+  UINTN NumberOfTableEntries;
 } KernelParameters;
 
 // -----------------
@@ -150,22 +184,45 @@ typedef struct {
 EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *cout = NULL; // Console out
 EFI_SIMPLE_TEXT_INPUT_PROTOCOL *cin = NULL; // Console out
 EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *cerr = NULL; // Console error
+EFI_SYSTEM_TABLE *st; // Systable
 EFI_BOOT_SERVICES *bs; // Boot Services
 EFI_RUNTIME_SERVICES *rs; // Runtime Services
 EFI_HANDLE image = NULL; // Image handle
 EFI_EVENT timerEvent = NULL; // Timer event for printing date/time
 
 // =================
-// Set global vars
+// memset for compling with clang/gcc (set len bytes of dst memory with int c) UNCOMMENT FOR CLANG
 // =================
-void initGlbVars(EFI_HANDLE handle, EFI_SYSTEM_TABLE *systable) {
-  cout = systable->ConOut;
-  cin = systable->ConIn;
-  //cerr = systable->StdErr; // TODO: Research why it doesnt work in emulation
-  cerr = cout; // Temporary
-  bs = systable->BootServices;
-  rs = systable->RuntimeServices;
-  image = handle;
+VOID *memset(VOID *dst, UINT8 c, UINTN len) {
+  UINT8 *p = dst;
+  for(UINTN i = 0; i < len; i++) {
+    p[i] = c;
+  }
+  return dst;
+}
+
+// =================
+// memcpy for compiling with clang/gcc (set len bytes of dst memory from src) UNCOMMENT FOR CLANG
+// =================
+VOID *memcpy(VOID *dst, VOID *src, UINTN len) {
+  UINT8 *p = dst;
+  UINT8 *q = src;
+  for(UINTN i = 0; i < len; i++) {
+    p[i] = q[i];
+  }
+  return dst;
+}
+
+// ================
+// memcmp Compare up to len bytes of m1 and m2, stop at first point that they dont equal.
+// ================
+INTN memcmp(VOID *m1, VOID *m2, UINTN len) {
+  UINT8 *p = m1;
+  UINT8 *q = m2;
+  for(UINTN i = 0; i < len; i++) {
+    if(p[i] != q[i]) return (INTN)p[i] - (INTN)q[i];
+  }
+  return 0;
 }
 
 // =================
@@ -190,6 +247,22 @@ UINTN strLen(char *str) {
     str++;
   }
   return len;
+}
+
+// =================
+// Substring function
+// =================
+char *substr(char *haystack, char *needle) {
+  if(!needle) return haystack;
+
+  char *p = haystack;
+  while(*p) {
+    if(*p == *needle) {
+      if(!memcmp(p, needle, strLen(needle))) return p;
+    }
+    p++;
+  }
+  return NULL;
 }
 
 // =================
@@ -479,8 +552,6 @@ EFI_INPUT_KEY getKey(void) {
     return key;
 }
 
-
-
 // =================
 // Print formatted strings to stdout
 // =================
@@ -554,7 +625,6 @@ end:
   return result;
 } 
 
-
 // =================
 // Print error message and get a key from user, so they can acknowledge the error and it doesnt go on immediately
 // =================
@@ -567,4 +637,59 @@ BOOLEAN error(CHAR16 *fmt, ...) {
 
   va_end(args);
   return result;
+}
+
+// =================
+// Print a GUID value
+// =================
+VOID printGuid(EFI_GUID guid) {
+  UINT8 *p = (UINT8 *)&guid;
+  printf(
+    u"{%x,%x,%x,%x,%x,{%x,%x,%x,%x,%x,%x}}",
+    *(UINT32 *)&p[0], 
+    *(UINT16 *)&p[4],
+    *(UINT16 *)&p[6],
+    (UINTN)p[8], (UINTN)p[9], (UINTN)p[10],(UINTN)p[11],
+    (UINTN)p[12],(UINTN)p[13],(UINTN)p[14],(UINTN)p[15]
+  );
+}
+
+// =================
+// Printing DateTime
+// =================
+VOID EFIAPI printDateTime(IN EFI_EVENT event, IN VOID *Context) {
+  (VOID)event; // Suppress compiler warnings
+
+  // Timer context will be the textmode screen bounds
+  typedef struct {
+    UINT32 rows, cols;
+  } TimerContext;
+
+  TimerContext context = *(TimerContext *)Context;
+
+  // Save current cursor pos before printing
+  UINT32 saveCol = cout->Mode->CursorColumn, saveRow = cout->Mode->CursorRow;
+
+  // Get datetime
+  EFI_TIME time = {0};
+  EFI_TIME_CAPABILITIES capabilities = {0};
+
+  // get current datetime
+  rs->GetTime(&time, &capabilities);
+
+  // Move cursor to print in lower right corner
+  cout->SetCursorPosition(cout, context.cols - 20, context.rows -1);
+
+  // Print current Datetime
+  printf(u"%u-%s%u-%s%u %s%u:%s%u:%s%u",
+    time.Year,
+    PAD0(time.Month), time.Month,
+    PAD0(time.Day),   time.Day,
+    PAD0(time.Hour),  time.Hour,
+    PAD0(time.Minute),time.Minute,
+    PAD0(time.Second),time.Second
+  );
+
+  // Restore cursor pos
+  cout->SetCursorPosition(cout, saveCol, saveRow);
 }

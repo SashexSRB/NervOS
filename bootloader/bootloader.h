@@ -7,7 +7,6 @@
 // -----------------
 #define ARR_SIZE(x) (sizeof (x) / sizeof (x)[0])
 #define BOOL_TO_YN(b) ((b) ? u"Yes" : u"No")
-#define PAD0(x) ((x) < 10 ? u"0" : u"")
 
 // -----------------
 //  Global constants
@@ -21,6 +20,20 @@
 #define PAGE_SIZE 4096 
 #define IMAGE_FILE_MACHINE_AMD64 0x8664
 #define IMAGE_NT_OPTIONAL_HDR64_MAGIC 0x20B // PE32+ magic number
+
+// =================
+// Set global vars
+// =================
+void initGlbVars(EFI_HANDLE handle, EFI_SYSTEM_TABLE *systable) {
+  cout = systable->ConOut;
+  cin = systable->ConIn;
+  //cerr = systable->StdErr; // TODO: Research why it doesnt work in emulation
+  cerr = cout; // Temporary
+  st = systable;
+  bs = st->BootServices;
+  rs = st->RuntimeServices;
+  image = handle;
+}
 
 // -----------------
 // Mouse drawing stuff
@@ -38,57 +51,6 @@ EFI_GRAPHICS_OUTPUT_BLT_PIXEL cursorBuffer[] = {
 };
 // Buffer to save FB data at cursor position
 EFI_GRAPHICS_OUTPUT_BLT_PIXEL savedBuffer[8*8] = {0};
-
-// =================
-// memset for compling with clang/gcc (set len bytes of dst memory with int c) UNCOMMENT FOR CLANG
-// =================
-VOID *memset(VOID *dst, UINT8 c, UINTN len) {
-  UINT8 *p = dst;
-  for(UINTN i = 0; i < len; i++) {
-    p[i] = c;
-  }
-  return dst;
-}
-
-// =================
-// memcpy for compiling with clang/gcc (set len bytes of dst memory from src) UNCOMMENT FOR CLANG
-// =================
-VOID *memcpy(VOID *dst, VOID *src, UINTN len) {
-  UINT8 *p = dst;
-  UINT8 *q = src;
-  for(UINTN i = 0; i < len; i++) {
-    p[i] = q[i];
-  }
-  return dst;
-}
-
-// ================
-// memcmp Compare up to len bytes of m1 and m2, stop at first point that they dont equal.
-// ================
-INTN memcmp(VOID *m1, VOID *m2, UINTN len) {
-  UINT8 *p = m1;
-  UINT8 *q = m2;
-  for(UINTN i = 0; i < len; i++) {
-    if(p[i] != q[i]) return (INTN)p[i] - (INTN)q[i];
-  }
-  return 0;
-}
-
-// =================
-// Substring function
-// =================
-char *substr(char *haystack, char *needle) {
-  if(!needle) return haystack;
-
-  char *p = haystack;
-  while(*p) {
-    if(*p == *needle) {
-      if(!memcmp(p, needle, strLen(needle))) return p;
-    }
-    p++;
-  }
-  return NULL;
-}
 
 // =================
 // Set text mode
@@ -924,46 +886,6 @@ EFI_STATUS testMouse(void) {
 }
 
 // =================
-// Printing DateTime
-// =================
-VOID EFIAPI printDateTime(IN EFI_EVENT event, IN VOID *Context) {
-  (VOID)event; // Suppress compiler warnings
-
-  // Timer context will be the textmode screen bounds
-  typedef struct {
-    UINT32 rows, cols;
-  } TimerContext;
-
-  TimerContext context = *(TimerContext *)Context;
-
-  // Save current cursor pos before printing
-  UINT32 saveCol = cout->Mode->CursorColumn, saveRow = cout->Mode->CursorRow;
-
-  // Get datetime
-  EFI_TIME time = {0};
-  EFI_TIME_CAPABILITIES capabilities = {0};
-
-  // get current datetime
-  rs->GetTime(&time, &capabilities);
-
-  // Move cursor to print in lower right corner
-  cout->SetCursorPosition(cout, context.cols - 20, context.rows -1);
-
-  // Print current Datetime
-  printf(u"%u-%s%u-%s%u %s%u:%s%u:%s%u",
-    time.Year,
-    PAD0(time.Month), time.Month,
-    PAD0(time.Day),   time.Day,
-    PAD0(time.Hour),  time.Hour,
-    PAD0(time.Minute),time.Minute,
-    PAD0(time.Second),time.Second
-  );
-
-  // Restore cursor pos
-  cout->SetCursorPosition(cout, saveCol, saveRow);
-}
-
-// =================
 // Reading ESP Files
 // =================
 EFI_STATUS readEspFiles(void) {
@@ -1485,7 +1407,7 @@ VOID *loadPe(VOID *peBuffer) {
       CHAR16 str[2];
       str[0] = *pos;
       str[1] = u'\0';
-      if(*pos == '\0') break; // 1488th line of code?? hitler reference? :D
+      if(*pos == '\0') break; 
       printf(u"%s", str);
       pos++;
     }
@@ -1577,7 +1499,7 @@ EFI_STATUS printMemoryMap(void) {
   printf(
     u"Memory Map Size: %u, # Descriptor Size: %u\r\n" 
     u"Number of Descriptors: %u, Key: %x\r\n",
-    mMap.size, mMap.descriptorSize,
+    mMap.size, mMap.descriptorSize, // 1488th line of code?? hitler reference? :D
     mMap.size / mMap.descriptorSize, mMap.key
   );
 
@@ -1618,6 +1540,175 @@ EFI_STATUS printMemoryMap(void) {
   bs->FreePool(mMap.map);
 
   printf(u"Press any key to go back...");
+  getKey();
+  return EFI_SUCCESS;
+}
+
+// =================
+// Get specific config table pointer by GUID
+// =================
+VOID *getConfigTableByGuid(EFI_GUID guid) {
+  for(UINTN i = 0; i < st->NumberOfTableEntries; i++) {
+    EFI_GUID vendorGuid = st->ConfigurationTable[i].VendorGuid;
+
+    if(!memcmp(&vendorGuid, &guid, sizeof guid)) return st->ConfigurationTable[i].VendorTable;
+  }
+
+  return NULL; // Did not find config table
+}
+
+// =================
+// Print ACPI Table header
+// =================
+EFI_STATUS printAcpiTableHeader(ACPI_Description_Header header) {
+  printf(
+    u"Signature: %c%c%c%c\r\n"
+    u"Length: %u\r\n"
+    u"Revision: %u\r\n"
+    u"Checksum: %u\r\n"
+    u"OEMID: %c%c%c%c%c%c\r\n"
+    u"OEM Table ID: %c%c%c%c%c%c%c%c\r\n"
+    u"OEM Revision: %u\r\n"
+    u"Creator ID: %x\r\n"
+    u"Creator Revision: %x\r\n",
+    header.signature[0], header.signature[1], header.signature[2], header.signature[3],
+    (UINTN)header.length,
+    (UINTN)header.revision,
+    (UINTN)header.checksum,
+    (UINTN)header.OEMID[0], (UINTN)header.OEMID[1], (UINTN)header.OEMID[2], (UINTN)header.OEMID[3], (UINTN)header.OEMID[4], (UINTN)header.OEMID[5], 
+    (UINTN)header.OEMTableID[0], (UINTN)header.OEMTableID[1], (UINTN)header.OEMTableID[2], (UINTN)header.OEMTableID[3], (UINTN)header.OEMTableID[4], (UINTN)header.OEMTableID[5], (UINTN)header.OEMTableID[6], (UINTN)header.OEMTableID[7],
+    (UINTN)header.OEMRevision,
+    (UINTN)header.creatorID,
+    (UINTN)header.creatorRevision
+  );
+
+  return EFI_SUCCESS;
+}
+
+// =================
+// Print configuration tables
+// =================
+EFI_STATUS printConfigTables(void) {
+  cout->ClearScreen(cout);
+  bs->CloseEvent(timerEvent);
+
+  printf(u"Configuration Table GUIDs:\r\n");
+  for(UINTN i = 0; i < st->NumberOfTableEntries; i++) {
+    EFI_GUID guid = st->ConfigurationTable[i].VendorGuid;
+    printGuid(guid);
+    UINTN j = 0;
+
+    // Print GUID name if available
+    bool found = false;
+    for (j = 0; j < ARR_SIZE(configTableGuidsAndStrings); j++) {
+      if(!memcmp(&guid, &configTableGuidsAndStrings[j].guid, sizeof guid)) {
+        found = true;
+        break;
+      }
+    }
+    printf(u"\r\n(%s)\r\n", found ? configTableGuidsAndStrings[j].string : u"Unknown GUID Value");
+    // Pause every so often
+    if(i > 0 && i % 6 == 0) getKey();
+  }
+
+  printf(u"\r\nPress any key to go back...\r\n");
+  getKey();
+
+  return EFI_SUCCESS;
+}
+
+// ================
+// Print ACPI Tables
+// ================
+EFI_STATUS printAcpiTables(void) {
+  cout->ClearScreen(cout);
+  bs->CloseEvent(timerEvent);
+
+  EFI_GUID acpiGuid = EFI_ACPI_TABLE_GUID;
+
+  // Check for ACPI 2.0+ table
+  VOID *rsdpPtr = getConfigTableByGuid(acpiGuid);
+  bool acpi2 = false;
+  if(!rsdpPtr) {
+    // Check for ACPI 1.0 table as fallback
+    acpiGuid = (EFI_GUID)ACPI_TABLE_GUID;
+    rsdpPtr = getConfigTableByGuid(acpiGuid);
+    if(!rsdpPtr) {
+      error(u"ERROR: Could not find ACPI Configuration Table\r\n");
+      return 1;
+    } else {
+      printf(u"ACPI 1.0 Table found at %x\r\n\r\n", rsdpPtr);
+    }
+  } else {
+    printf(u"ACPI 2.0+ Table found at %x\r\n\r\n", rsdpPtr);\
+    acpi2 = true;
+  }
+
+  // Print RSDP
+  UINT8 *rsdp = rsdpPtr; 
+  if(acpi2) {
+    printf(
+      u"RSDP:\r\n"
+      u"Signature: %c%c%c%c%c%c%c%c\r\n"
+      u"Checksum: %u\r\n"
+      u"OEMID: %c%c%c%c%c%c\r\n"
+      u"RSDT Address: %x\r\n"
+      u"Length: %u\r\n"
+      u"XSDT Address: %x\r\n"
+      u"Extended Checksum: %u\r\n",
+      rsdp[0], rsdp[1], rsdp[2], rsdp[3], rsdp[4], rsdp[5], rsdp[6], rsdp[7],
+      (UINTN)rsdp[8],
+      rsdp[9], rsdp[10], rsdp[11], rsdp[12], rsdp[13], rsdp[14],
+      *(UINT32 *)&rsdp[16],
+      *(UINT32 *)&rsdp[20],
+      *(UINT64 *)&rsdp[24],
+      (UINTN)rsdp[32]
+    );
+  } else {
+    printf(
+      u"RSDP:\r\n"
+      u"Signature: %c%c%c%c%c%c%c%c\r\n"
+      u"Checksum: %u\r\n"
+      u"OEMID: %c%c%c%c%c%c\r\n"
+      u"RSDT Address: %x\r\n",
+      rsdp[0], rsdp[1], rsdp[2], rsdp[3], rsdp[4], rsdp[5], rsdp[6], rsdp[7],
+      (UINTN)rsdp[8],
+      rsdp[9], rsdp[10], rsdp[11], rsdp[12], rsdp[13], rsdp[14],
+      *(UINT32 *)&rsdp[16]
+    );
+  }
+   
+  printf(u"\r\nPress any key to print RSDT/XSDT...\r\n");
+  getKey();
+
+  ACPI_Description_Header *header = NULL;
+  UINT64 xsdtAddress =  *(UINT64 *)&rsdp[24];
+  if(acpi2) {
+    // Print XSDT header
+    header = (ACPI_Description_Header *)xsdtAddress;
+    printAcpiTableHeader(*header);
+
+    printf(u"\r\nPress any key to print XSDT Entries...\r\n");
+    getKey();
+    // Print XSDT Entries
+    printf(u"Entries:\r\n");
+    UINT64 *entry = (UINT64 *)((UINT8 *)header + sizeof *header); // Header = *= Size of header
+    for (UINTN i = 0; i < (header->length - sizeof *header) / 8; i++) {
+      ACPI_Description_Header *tableHeader = (ACPI_Description_Header *)entry[i];
+      printf(
+        u"%c%c%c%c\r\n",
+        tableHeader->signature[0], tableHeader->signature[1], tableHeader->signature[2], tableHeader->signature[3] 
+      );
+      // Print more than only signature
+    }
+  } else {
+    // Print RSDT header & entries
+
+  }
+
+  // Print other tables from XSDT/RSDT entries
+
+  printf(u"\r\nPress any key to go back...\r\n");
   getKey();
   return EFI_SUCCESS;
 }
@@ -1761,7 +1852,11 @@ EFI_STATUS loadKernel(void) {
     goto cleanup;
   }
 
-  // Call kernel entry point with parameters
+  // Set rest of kernel params
+  kparams.RuntimeServices = rs;
+  kparams.NumberOfTableEntries = st->NumberOfTableEntries;
+  kparams.ConfigurationTable = st->ConfigurationTable;
+  // Call kernel entry point with parameters, fully in control now, no EFI anymore.
   entryPoint(kparams);
 
   // Should not return to this point!
