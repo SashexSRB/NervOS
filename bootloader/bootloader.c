@@ -19,6 +19,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     u"Test Mouse",
     u"Read ESP Files",
     u"Print Block IO Partitions",
+    u"Print Memory Map",
     u"Load Kernel",
   };
 
@@ -28,6 +29,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     testMouse,
     readEspFiles,
     printBlockIoPartitions,
+    printMemoryMap,
     loadKernel,
   };
 
@@ -46,6 +48,9 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     TimerContext context = {0};
     context.rows = rows;
     context.cols = cols;
+
+    // Close Timer Event
+    bs->CloseEvent(timerEvent);
 
     // Create timer event, to print datetime on screen every second.
     bs->CreateEvent(

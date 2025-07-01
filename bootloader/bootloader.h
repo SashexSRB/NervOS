@@ -1,14 +1,13 @@
 #pragma once
 #include "efi.h"
-#include <stdbool.h>
-#include <stdarg.h>
+#include "efilib.h"
 
 // -----------------
 //  Global macros
 // -----------------
 #define ARR_SIZE(x) (sizeof (x) / sizeof (x)[0])
-#define PAD0(x) ((x) < 10 ? u"0" : u"")
 #define BOOL_TO_YN(b) ((b) ? u"Yes" : u"No")
+#define PAD0(x) ((x) < 10 ? u"0" : u"")
 
 // -----------------
 //  Global constants
@@ -22,143 +21,6 @@
 #define PAGE_SIZE 4096 
 #define IMAGE_FILE_MACHINE_AMD64 0x8664
 #define IMAGE_NT_OPTIONAL_HDR64_MAGIC 0x20B // PE32+ magic number
-
-// -----------------
-//  Global vars
-// -----------------
-EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *cout = NULL; // Console out
-EFI_SIMPLE_TEXT_INPUT_PROTOCOL *cin = NULL; // Console out
-EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *cerr = NULL; // Console error
-EFI_BOOT_SERVICES *bs; // Boot Services
-EFI_RUNTIME_SERVICES *rs; // Runtime Services
-EFI_HANDLE image = NULL; // Image handle
-EFI_EVENT timerEvent = NULL; // Timer event for printing date/time
-
-// -----------------
-// Global Typedefs
-// -----------------
-//ELF Header - x86-64
-typedef struct {
-  struct {
-    UINT8 ei_mag0;
-    UINT8 ei_mag1;
-    UINT8 ei_mag2;
-    UINT8 ei_mag3;
-    UINT8 ei_class;
-    UINT8 ei_data;
-    UINT8 ei_version;
-    UINT8 ei_osabi;
-    UINT8 ei_abiversion;
-    UINT8 ei_pad[7];
-  } e_ident;
-
-  UINT16 e_type;
-  UINT16 e_machine;
-  UINT32 e_version;
-  UINT64 e_entry; // Entry point address
-  UINT64 e_phoff; // Program header offset
-  UINT64 e_shoff; // Section header offset
-  UINT32 e_flags;
-  UINT16 e_ehsize; // ELF header size
-  UINT16 e_phentsize; // Program header entry size
-  UINT16 e_phnum; // Number of program header entries
-  UINT16 e_shentsize; // Section header entry size
-  UINT16 e_shnum; // Number of section header entries
-  UINT16 e_shstrndx; // Section header string table index
-} __attribute__ ((packed)) ELF_Header_64;
-
-// ELF Program Header - x86-64
-typedef struct {
-  UINT32 p_type; // Type of segment
-  UINT32 p_flags; // Segment flags
-  UINT64 p_offset; // Offset in file
-  UINT64 p_vaddr; // Virtual address in memory
-  UINT64 p_paddr; // Physical address (not used)
-  UINT64 p_filesz; // Size of segment in file
-  UINT64 p_memsz; // Size of segment in memory
-  UINT64 p_align; // Alignment of segment
-} __attribute__ ((packed)) ELF_Program_Header_64;
-
-// ELF Header e_type values
-typedef enum {
-  ET_EXEC = 0x2,
-  ET_DYN = 0x3,
-} ELF_EHEADER_TYPE;
-
-// ELF Program Header p_type values
-typedef enum {
-  PT_NULL = 0x0,
-  PT_LOAD = 0x1, // Loadable
-} ELF_PHEADER_TYPE;
-
-// PE Structs/types
-// PE32+ COFF File Header
-typedef struct {
-  UINT16 Machine; // Machine type
-  UINT16 NumberOfSections; // Number of sections
-  UINT32 TimeDateStamp; // Time and date stamp
-  UINT32 PointerToSymbolTable; // Pointer to symbol table (not used)
-  UINT32 NumberOfSymbols; // Number of symbols (not used)
-  UINT16 SizeOfOptionalHeader; // Size of optional header
-  UINT16 Characteristics; // Characteristics flags
-} __attribute__ ((packed)) PE_Coff_File_Header_64;
-
-// COFF File Header Characteristics
-typedef enum {
-  IMAGE_FILE_EXECUTABLE_IMAGE = 0x0002, // Executable image
-} PE_COFF_CHARACTERISTICS;
-
-// PE32+ Optional Header
-typedef struct {
-  UINT16 Magic; // Magic number (0x20B for PE32+)
-  UINT8 MajorLinkerVersion; // Major version of linker
-  UINT8 MinorLinkerVersion; // Minor version of linker
-  UINT32 SizeOfCode; // Size of code section
-  UINT32 SizeOfInitializedData; // Size of initialized data section
-  UINT32 SizeOfUninitializedData; // Size of uninitialized data section
-  UINT32 AddressOfEntryPoint; // Entry point address
-  UINT32 BaseOfCode; // Base address of code section
-  UINT64 ImageBase; // Base address of image in memory
-  UINT32 SectionAlignment; // Section alignment in memory
-  UINT32 FileAlignment; // Section alignment in file
-  UINT16 MajorOperatingSystemVersion; // Major OS version
-  UINT16 MinorOperatingSystemVersion; // Minor OS version
-  UINT16 MajorImageVersion; // Major image version
-  UINT16 MinorImageVersion; // Minor image version
-  UINT16 MajorSubsystemVersion; // Major subsystem version
-  UINT16 MinorSubsystemVersion; // Minor subsystem version
-  UINT32 Win32VersionValue; // Reserved, must be zero
-  UINT32 SizeOfImage; // Size of image in memory
-  UINT32 SizeOfHeaders; // Size of headers in file
-  UINT32 CheckSum; // Checksum of image
-  UINT16 Subsystem; // Subsystem type
-  UINT16 DllCharacteristics; // DLL characteristics flags
-  UINT64 SizeOfStackReserve; // Size of stack reserve
-  UINT64 SizeOfStackCommit; // Size of stack commit
-  UINT64 SizeOfHeapReserve; // Size of heap reserve
-  UINT64 SizeOfHeapCommit; // Size of heap commit
-  UINT32 LoaderFlags; // Loader flags (reserved, must be zero)
-  UINT32 NumberOfRvaAndSizes; // Number of data directories
-} __attribute__ ((packed)) PE_Optional_Header_64;
-
-// Optional Header Characteristics
-typedef enum {
-  IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE = 0x0040, // DLL can be relocated at load time
-} PE_OPTIONAL_HEADER_CHARACTERISTICS;
-
-// PE32+ Section Headers - Immediately follows the optional header
-typedef struct {
-  UINT64 Name; // Section name (offset to string table)
-  UINT32 VirtualSize; // Size of section in memory
-  UINT32 VirtualAddress; // Virtual address of section in memory
-  UINT32 SizeOfRawData; // Size of section in file
-  UINT32 PointerToRawData; // Offset to section data in file
-  UINT32 PointerToRelocations; // Offset to relocations (not used)
-  UINT32 PointerToLinenumbers; // Offset to line numbers (not used)
-  UINT16 NumberOfRelocations; // Number of relocations (not used)
-  UINT16 NumberOfLinenumbers; // Number of line numbers (not used)
-  UINT32 Characteristics; // Section characteristics flags
-} __attribute__ ((packed)) PE_Section_Header_64;
 
 // -----------------
 // Mouse drawing stuff
@@ -176,24 +38,6 @@ EFI_GRAPHICS_OUTPUT_BLT_PIXEL cursorBuffer[] = {
 };
 // Buffer to save FB data at cursor position
 EFI_GRAPHICS_OUTPUT_BLT_PIXEL savedBuffer[8*8] = {0};
-
-
-// ++++++++++++++++++++++++++++++++++++++++++++
-// FUNCTIONS
-// ++++++++++++++++++++++++++++++++++++++++++++
-
-// =================
-// Set global vars
-// =================
-void initGlbVars(EFI_HANDLE handle, EFI_SYSTEM_TABLE *systable) {
-  cout = systable->ConOut;
-  cin = systable->ConIn;
-  //cerr = systable->StdErr; // TODO: Research why it doesnt work in emulation
-  cerr = cout; // Temporary
-  bs = systable->BootServices;
-  rs = systable->RuntimeServices;
-  image = handle;
-}
 
 // =================
 // memset for compling with clang/gcc (set len bytes of dst memory with int c) UNCOMMENT FOR CLANG
@@ -231,30 +75,6 @@ INTN memcmp(VOID *m1, VOID *m2, UINTN len) {
 }
 
 // =================
-// strcmp Compare two strings, stop at first point that they dont equal.
-// =================
-INTN strcmp(char *s1, char *s2) {
-  UINTN i = 0;
-  while (s1 && s2 && *s1 && *s2) {
-    if(s1[i] != s2[i]) break;
-    i++;
-  }
-  return (INTN)(s1[i]) - (INTN)(s2[i]);
-}
-
-// =================
-// strLen
-// =================
-UINTN strLen(char *str) {
-  UINTN len = 0;
-  while(*str) {
-    len++;
-    str++;
-  }
-  return len;
-}
-
-// =================
 // Substring function
 // =================
 char *substr(char *haystack, char *needle) {
@@ -268,380 +88,6 @@ char *substr(char *haystack, char *needle) {
     p++;
   }
   return NULL;
-}
-
-// =================
-// isDigit
-// =================
-BOOLEAN isDigit(char c) {
-  return (c >= u'0' && c <= u'9');
-}
-
-// =================
-// Copy string CHAR16 strcpy
-// =================
-CHAR16 *strcpy_u16(CHAR16 *dst, CHAR16 *src) {
-  if(!dst) return NULL;
-  if(!src) return dst;
-
-  CHAR16 *result = dst;
-  while(*src) {
-    *dst++ = *src++;
-  }
-  *dst = u'\0'; // Null terminate
-
-  return result;
-}
-
-// =================
-// Compare string CHAR16 strcmp
-// =================
-INTN strcmp_u16(CHAR16 *s1, CHAR16 *s2, UINTN len) {
-  if(len == 0) return 0;
-  while(len > 0 && *s1 && *s2 && *s1 == *s2) {
-    s1++;
-    s2++;
-    len--;
-  }
-  return *s1 - *s2;
-}
-
-// =================
-// Compare string CHAR16 strrchr
-// =================
-CHAR16 *strrchr_u16(CHAR16 *str, CHAR16 c) {
-  CHAR16 *result = NULL;
-
-  while (*str) {
-    if(*str == c) result = str;
-    str++;
-  }
-
-  return result;
-}
-
-// =================
-// concatenate string CHAR16 strcat
-// =================
-CHAR16 *strcat_u16(CHAR16 *dst, CHAR16 *src) {
-  CHAR16 *s = dst;
-
-  while(*s) s++; // Go until null terminator
-  while(*src) *s++ = *src++;
-
-  *s = u'\0';
-  return dst;
-}
-
-// =================
-// Print an number to stderr
-// =================
-BOOLEAN eprintNum(UINTN number, UINT8 base, BOOLEAN isSigned) {
-  const CHAR16 *digits = u"0123456789ABCDEF";
-  CHAR16 buffer[24]; // enough for UINTN_MAX (UINT64_MAX) + sign
-  UINTN i = 0;
-  BOOLEAN negative = FALSE;
-
-  if(base > 16) {
-    cerr->OutputString(cerr, u"Invalid Base Specified!\r\n");
-    return FALSE;
-  } // Invalid base
-
-  // only use and print neg numbers if decimal is signed. 
-  if(base == 10 && isSigned && (INTN)number < 0) {
-    number = -(INTN)number; // Get absolute value of correct signed value to get digits to print
-    negative = TRUE;
-  }
-
-  do {
-    buffer[i++] = digits[number % base];
-    number /= base;
-  } while(number > 0);
-
-  switch(base) {
-    case 2:
-      // binary
-      buffer[i++] = u'b';
-      buffer[i++] = u'0';
-      break;
-    case 8:
-      // octal
-      buffer[i++] = u'o';
-      buffer[i++] = u'0';
-      break;
-    case 10: 
-      // decimal
-      if (negative) buffer[i++] = u'-';
-      break;
-    case 16:
-      // hexadecimal
-      buffer[i++] = u'x';
-      buffer[i++] = u'0';
-      break;
-    default:
-      // Maybe invalid base, but we'll go with it (no processing)
-      break;
-  }
-  
-  // null terminate string first
-  buffer[i--] = u'\0';
-
-  // reverse buffer before printing
-  for (UINTN j = 0; j < i; j++, i--) {
-    // swap digits
-    UINTN temp = buffer[i];
-    buffer[i] = buffer[j];
-    buffer[j] = temp;
-  }
-
-  // print number string
-  cerr->OutputString(cerr, buffer);
-
-  return TRUE;
-}
-
-// =================
-// Print an number to stdout
-// =================
-BOOLEAN printNum(UINTN number, UINT8 base, BOOLEAN isSigned) {
-  const CHAR16 *digits = u"0123456789ABCDEF";
-  CHAR16 buffer[24]; // enough for UINTN_MAX (UINT64_MAX) + sign
-  UINTN i = 0;
-  BOOLEAN negative = FALSE;
-
-  if(base > 16) {
-    cerr->OutputString(cerr, u"Invalid Base Specified!\r\n");
-    return FALSE;
-  } // Invalid base
-
-  // only use and print neg numbers if decimal is signed. 
-  if(base == 10 && isSigned && (INTN)number < 0) {
-    number = -(INTN)number; // Get absolute value of correct signed value to get digits to print
-    negative = TRUE;
-  }
-
-  do {
-    buffer[i++] = digits[number % base];
-    number /= base;
-  } while(number > 0);
-
-  switch(base) {
-    case 2:
-      // binary
-      buffer[i++] = u'b';
-      buffer[i++] = u'0';
-      break;
-    case 8:
-      // octal
-      buffer[i++] = u'o';
-      buffer[i++] = u'0';
-      break;
-    case 10: 
-      // decimal
-      if (negative) buffer[i++] = u'-';
-      break;
-    case 16:
-      // hexadecimal
-      buffer[i++] = u'x';
-      buffer[i++] = u'0';
-      break;
-    default:
-      // Maybe invalid base, but we'll go with it (no processing)
-      break;
-  }
-  
-  // null terminate string first
-  buffer[i--] = u'\0';
-
-  // reverse buffer before printing
-  for (UINTN j = 0; j < i; j++, i--) {
-    // swap digits
-    UINTN temp = buffer[i];
-    buffer[i] = buffer[j];
-    buffer[j] = temp;
-  }
-
-  // print number string
-  cout->OutputString(cout, buffer);
-
-  return TRUE;
-}
-
-// =================
-// Print formatted strings to stderr
-// =================
-BOOLEAN eprintf(CHAR16 *fmt, va_list args) {
-  BOOLEAN result = TRUE;
-  CHAR16 cstr[2]; // place init this with memset and use = {} initializer
-  
-  //Initialize buffer
-  cstr[0] = u'\0', cstr[1] = u'\0';
-
-  // Print formatted string values
-  for (UINTN i=0 ; fmt[i] != u'\0'; i++) {
-    if (fmt[i] == u'%') {
-      i++;
-      // Grab next arg type from input args and print it
-      switch(fmt[i]) {
-        case u'c': {
-          cstr[0] = va_arg(args, int);
-          cerr->OutputString(cerr, cstr);
-        }
-        break;
-        case u's': {
-          //printf("%s", string) - Print CHAR16 string
-          CHAR16 *string = va_arg(args, CHAR16 *);
-          cerr->OutputString(cerr, string);
-        }
-        break;
-        case u'b': {
-          UINTN number = va_arg(args, UINTN);
-          eprintNum(number, 2, FALSE);
-        }
-        break;
-        case u'o': {
-          UINTN number = va_arg(args, UINTN);
-          eprintNum(number, 8, FALSE);
-        }
-        break;
-        case u'd': {
-          //printf("%d", number_int32) - Print INT32
-          INT32 number = va_arg(args, INT32);
-          eprintNum(number, 10, TRUE);
-        }
-        break;
-        case u'x': {
-          //printf("%d", number_int32) - Print INT32
-          UINTN number = va_arg(args, UINTN);
-          eprintNum(number, 16, FALSE);
-        }
-        break;
-        case u'u': {
-          UINT32 number = va_arg(args, UINT32);
-          eprintNum(number, 10, FALSE);
-        }
-        break;
-        default:
-          cerr->OutputString(cerr, u"Invalid format specifier: %");
-          cstr[0] = fmt[i];
-          cerr->OutputString(cerr, cstr);
-          cerr->OutputString(cerr, u"\r\n");
-          result = FALSE;
-          goto end;
-        break;
-      }
-    } else {
-      // Not formatted, print next char
-      cstr[0] = fmt[i];
-      cerr->OutputString(cerr, cstr);
-    }
-  }
-end:
-  return result;
-} 
-
-// =================
-// Print formatted strings to stdout
-// =================
-BOOLEAN printf(CHAR16 *fmt, ...) {
-  BOOLEAN result = TRUE;
-  CHAR16 cstr[2]; // place init this with memset and use = {} initializer
-  va_list args;
-  va_start(args, fmt);
-  
-  //Initialize buffer
-  cstr[0] = u'\0', cstr[1] = u'\0';
-
-  // Print formatted string values
-  for (UINTN i=0 ; fmt[i] != u'\0'; i++) {
-    if (fmt[i] == u'%') {
-      i++;
-      // Grab next arg type from input args and print it
-      switch(fmt[i]) {
-        case u'c': {
-          cstr[0] = va_arg(args, int);
-          cout->OutputString(cout, cstr);
-        }
-        break;
-        case u's': {
-          CHAR16 *string = va_arg(args, CHAR16*);
-          cout->OutputString(cout, string);
-        }
-        break;
-        case u'b': {
-          UINTN number = va_arg(args, UINTN);
-          printNum(number, 2, FALSE);
-        }
-        break;
-        case u'o': {
-          UINTN number = va_arg(args, UINTN);
-          printNum(number, 8, FALSE);
-        }
-        break;
-        case u'd': {
-          INT32 number = va_arg(args, INT32);
-          printNum(number, 10, TRUE);
-        }
-        break;
-        case u'x': {
-          UINTN number = va_arg(args, UINTN);
-          printNum(number, 16, FALSE);
-        }
-        break;
-        case u'u': {
-          UINT32 number = va_arg(args, UINT32);
-          printNum(number, 10, FALSE);
-        }
-        break;
-        default:
-          cout->OutputString(cout, u"Invalid format specifier: %");
-          cstr[0] = fmt[i];
-          cout->OutputString(cout, cstr);
-          cout->OutputString(cout, u"\r\n");
-          result = FALSE;
-          goto end;
-        break;
-      }
-    } else {
-      // Not formatted, print next char
-      cstr[0] = fmt[i];
-      cout->OutputString(cout, cstr);
-    }
-  }
-end:
-  va_end(args);
-  return result;
-} 
-
-// =================
-// Get key from user
-// =================
-EFI_INPUT_KEY getKey(void) {
-    EFI_EVENT events[1];
-    EFI_INPUT_KEY key;
-    key.ScanCode = 0;
-    key.UnicodeChar = u'\0';
-
-    events[0] = cin->WaitForKey;
-    UINTN idx = 0;
-    bs->WaitForEvent(1, events, &idx);
-
-    if(idx == 0) cin->ReadKeyStroke(cin, &key);
-    return key;
-}
-
-// =================
-// Print error message and get a key from user, so they can acknowledge the error and it doesnt go on immediately
-// =================
-BOOLEAN error(CHAR16 *fmt, ...) {
-  va_list args;
-  va_start(args, fmt);
-  BOOLEAN result = eprintf(fmt, args); // Printf the error message to stderr
-
-  getKey(); // User will respond with input before going on
-
-  va_end(args);
-  return result;
 }
 
 // =================
@@ -1487,7 +933,7 @@ VOID EFIAPI printDateTime(IN EFI_EVENT event, IN VOID *Context) {
   typedef struct {
     UINT32 rows, cols;
   } TimerContext;
-  // 1488th line of code?? hitler reference? :D
+
   TimerContext context = *(TimerContext *)Context;
 
   // Save current cursor pos before printing
@@ -2039,7 +1485,7 @@ VOID *loadPe(VOID *peBuffer) {
       CHAR16 str[2];
       str[0] = *pos;
       str[1] = u'\0';
-      if(*pos == '\0') break;
+      if(*pos == '\0') break; // 1488th line of code?? hitler reference? :D
       printf(u"%s", str);
       pos++;
     }
@@ -2071,9 +1517,116 @@ VOID *loadPe(VOID *peBuffer) {
 }
 
 // =================
+// Get Memory Map from UEFI
+// =================
+EFI_STATUS getMemoryMap(MemoryMapInfo *mMap) {
+  memset(mMap, 0, sizeof *mMap);
+  // Get initial memory map size (send 0 for map size)
+  EFI_STATUS status = EFI_SUCCESS;
+  status = bs->GetMemoryMap(
+    &mMap->size,
+    mMap->map,
+    &mMap->key,
+    &mMap->descriptorSize,
+    &mMap->descriptorVersion
+  );
+
+  if(EFI_ERROR(status) && status != EFI_BUFFER_TOO_SMALL) {
+    error(u"ERROR: %x; Could not get initial memory map size\r\n", status);
+    return status;
+  }
+
+  // Allocate buffer for actual memory map size
+  mMap->size += mMap->descriptorSize * 2; // Allocate enough space for an additional memory descriptor or 2 in the map due to this allocation itself.
+  status = bs->AllocatePool(EfiLoaderData, mMap->size ,(VOID **)&mMap->map);
+  if(EFI_ERROR(status)) {
+    error(u"ERROR: %x; Could not allocate buffer for memory map size\r\n", status);
+    return status;
+  }
+
+  // Call it again to get the actual memory map now that the buffer is the correct size
+  status = bs->GetMemoryMap(
+    &mMap->size,
+    mMap->map,
+    &mMap->key,
+    &mMap->descriptorSize,
+    &mMap->descriptorVersion
+  );
+
+  if(EFI_ERROR(status) && status != EFI_BUFFER_TOO_SMALL) {
+    error(u"ERROR: %x; Could not get UEFI memory map!\r\n", status);
+    return status;
+  }
+
+  
+  return EFI_SUCCESS;
+}
+
+// =================
+// Print Memory Map
+// =================
+EFI_STATUS printMemoryMap(void) {
+  cout->ClearScreen(cout);
+
+  bs->CloseEvent(timerEvent);
+
+  MemoryMapInfo mMap = {0};
+  getMemoryMap(&mMap);
+  
+  // Print memory map descriptor values
+  printf(
+    u"Memory Map Size: %u, # Descriptor Size: %u\r\n" 
+    u"Number of Descriptors: %u, Key: %x\r\n",
+    mMap.size, mMap.descriptorSize,
+    mMap.size / mMap.descriptorSize, mMap.key
+  );
+
+  UINTN usableBytes = 0; // "Usable" memory for an OS or similar, not firmware/device reserved
+  for (UINTN i = 0; i < mMap.size / mMap.descriptorSize; i++) {
+    EFI_MEMORY_DESCRIPTOR *desc = (EFI_MEMORY_DESCRIPTOR *)((UINT8 *)mMap.map + (i * mMap.descriptorSize));
+    printf(
+      u"%u: Typ: %u, Phy: %x, Vrt: %x, Pgs: %u, Att: %x\r\n",
+      i,
+      desc->Type,
+      desc->PhysicalStart,
+      desc->VirtualStart,
+      desc->NumberOfPages,
+      desc->Attribute
+    );
+
+    if(
+      desc->Type == EfiResetShutdown ||
+      desc->Type == EfiLoaderCode ||
+      desc->Type == EfiLoaderData ||
+      desc->Type == EfiBootServicesCode ||
+      desc->Type == EfiBootServicesData ||
+      desc->Type == EfiConventionalMemory ||
+      desc->Type == EfiPersistentMemory
+    ) {
+      usableBytes += desc->NumberOfPages * 4096;
+    }
+
+    // Pause every 20 lines
+    if (i > 0 && i % 20 == 0) getKey();
+    
+  }
+  printf(
+    u"\r\nUsable memory: %u / %u MiB / %u GiB\r\n",
+    usableBytes, usableBytes / (1024 * 1024), usableBytes / (1024 * 1024 * 1024)
+  );
+
+  bs->FreePool(mMap.map);
+
+  printf(u"Press any key to go back...");
+  getKey();
+  return EFI_SUCCESS;
+}
+
+// =================
 // Read Files from Data Partition
 // =================
 EFI_STATUS loadKernel(void) {
+
   VOID *diskBuffer = NULL;
   VOID *fileBuffer = NULL;
   EFI_STATUS status = EFI_SUCCESS;
@@ -2147,14 +1700,6 @@ EFI_STATUS loadKernel(void) {
     bs->FreePool(diskBuffer); // Free memory allocated for disk LBA buffer
     goto exit;
   }
-  
-  // Set up params to send to kernel
-  typedef struct {
-    void *memoryMap; // Get memory map to fill this out
-    EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE gopMode;
-  } KernelParameters;
-
-  KernelParameters kparams = {0};
 
   // Get GOP info for kernel params
   EFI_GUID gopGuid = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
@@ -2165,6 +1710,9 @@ EFI_STATUS loadKernel(void) {
     error(u"ERROR: %x; Could not locate GOP for kernel parameters.\r\n", status);
     return status;
   }
+  
+  // Initialize Kernel params
+  KernelParameters kparams = {0}; // Defined in efilib.h
   
   kparams.gopMode = *gop->Mode; // Copy GOP mode info to kernel params;
   void EFIAPI (*entryPoint)(KernelParameters) = NULL;
@@ -2196,11 +1744,22 @@ EFI_STATUS loadKernel(void) {
   // Close timer event so that it does not continue to fire off
   bs->CloseEvent(timerEvent);
 
-  // Get Memory Map
+  cout->ClearScreen(cout);
 
-  // Fill out kparams.memoryMap with memory map info
+  status = bs->AllocatePool(EfiLoaderData, sizeof(MemoryMapInfo), (VOID **)&kparams.mMap);
+  if(EFI_ERROR(status)) {
+    error(u"ERROR: %x; Could not allocate MemoryMapInfo struct\r\n", status);
+    goto cleanup;
+  }
+
+  // Get Memory Map
+  if(EFI_ERROR(getMemoryMap(kparams.mMap))) goto cleanup;
 
   // Exit boot services before calling kernel
+  if(EFI_ERROR(bs->ExitBootServices(image, kparams.mMap->key))) {
+    error(u"ERROR: %x; Could not exit boot services!\r\n", status);
+    goto cleanup;
+  }
 
   // Call kernel entry point with parameters
   entryPoint(kparams);
