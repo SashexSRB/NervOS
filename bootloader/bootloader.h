@@ -2052,14 +2052,20 @@ EFI_STATUS loadKernel(void) {
   // Identity map runtime services memory & set new addres map
   setRuntimeAddrMap(kparams.mMap);
 
+  // Remap kernel to higher addresses (including entry point (and kparams?))
+   
+  // Identity map framebuffer
+
+  // Identity map new stack for kernel
+
+  // Set up new GDT ad TSS
+
   // clear interrupts before setting up new GDT/paging/etc.
   __asm__ __volatile__("cli");
 
-  // Setup new GDT & TSS
-
-  // Set new page tables (CR3 = PML4) and GDT (lgdt && ltr), and jump/call entry point with params
-
-  // Remap kernel to higher addresses
+  // Set new page tables (CR3 = PML4) and GDT (lgdt && ltr), and call entry point with params
+  
+  // Test calling PE, ELF, and flat bin kernels/entry points
 
   // Call kernel entry point with parameters, fully in control now, no EFI anymore.
   entryPoint(kparams);
