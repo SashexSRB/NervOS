@@ -24,6 +24,9 @@
 #define IMAGE_FILE_MACHINE_AMD64 0x8664
 #define IMAGE_NT_OPTIONAL_HDR64_MAGIC 0x20B // PE32+ magic number
 
+// Kernel start address in higher memory (64bit)
+#define KERNEL_START_ADDR = 0xFFFFFFFF80000000
+
 typedef struct {
   UINT64 entries[512];
 } pageTable;
@@ -321,10 +324,10 @@ VOID *readEspFileToBuffer(CHAR16 *path, UINTN *fileSize) {
 
 // =================
 // Read disk LBA to buffer
-// Reads a single LBA (Logical Block Address) from the disk into a buffer.
+// Reads a single LBA (Logical Block Address) from the disk into a buffer. If executable input param is true, then allocate EfiLoaderCode, otherwise EfiLoaderData
 // =================
-VOID *readDiskLbasToBuffer(EFI_LBA diskLba, UINTN dataSize, UINT32 diskMediaID) {
-  VOID *buffer = NULL;
+EFI_PHYSICAL_ADDRESS readDiskLbasToBuffer(EFI_LBA diskLba, UINTN dataSize, UINT32 diskMediaID, bool executable) {
+  EFI_PHYSICAL_ADDRESS buffer = 0;
   EFI_STATUS status = EFI_SUCCESS;
 
   // Loop through and get Block IO Protocol for input media ID, for entire disk. 
@@ -375,15 +378,20 @@ VOID *readDiskLbasToBuffer(EFI_LBA diskLba, UINTN dataSize, UINT32 diskMediaID) 
   }
 
   // Allocate buffer for data
-  status = bs->AllocatePool(EfiLoaderData, dataSize, &buffer);
-  if(EFI_ERROR(status) || buffer == NULL) {
+  UINTN pagesNeeded = (dataSize + (PAGE_SIZE-1)) / PAGE_SIZE; 
+  if (executable) {
+    status = bs->AllocatePages(AllocateAnyPages, EfiLoaderCode, pagesNeeded, &buffer);
+  } else {
+    status = bs->AllocatePages(AllocateAnyPages, EfiLoaderData, pagesNeeded, &buffer);
+  }
+  if(EFI_ERROR(status) || (VOID *)buffer == NULL) {
     error(u"ERROR: %x Could not allocate buffer for disk data!\r\n", status);
     bs->CloseProtocol(handleBuffer[i], &dipGuid, image, NULL);
     goto cleanup;
   }
 
   // Use Disk IO Read to read into allocated buffer
-  status = dip->ReadDisk(dip, diskMediaID, diskLba * bip->Media->BlockSize, dataSize, buffer);
+  status = dip->ReadDisk(dip, diskMediaID, diskLba * bip->Media->BlockSize, dataSize, (VOID *)buffer);
   if(EFI_ERROR(status)) {
     error(u"ERROR: %x Could not read disk LBAs into buffer!\r\n", status);
   }
@@ -1249,7 +1257,7 @@ EFI_STATUS printBlockIoPartitions(void) {
 // =================
 // Load ELF64 PIE File into a new buffer and return entry point for the loaded ELF Kernel
 // =================
-VOID *loadElf(VOID *elfBuffer) {
+VOID *loadElf(VOID *elfBuffer, EFI_PHYSICAL_ADDRESS *kernelBuffer, UINTN *kernelSize) {
   ELF_Header_64 *ehdr = elfBuffer;
 
   // Print ELF Header info
@@ -1308,15 +1316,22 @@ VOID *loadElf(VOID *elfBuffer) {
 
   // Allocate buffer for program headers
   EFI_STATUS status = 0;
-  VOID *programBuffer;
-  status = bs->AllocatePool(EfiLoaderData, maxMemoryNeeded, &programBuffer);
+  EFI_PHYSICAL_ADDRESS programBuffer = 0;
+  UINTN pagesNeeded = (maxMemoryNeeded + (PAGE_SIZE - 1)) / PAGE_SIZE;
+
+  // May want to switch this for alloc a kernel to use AllocateAddress to put the buffer start at a specific address e.g. in higher half memory
+  status = bs->AllocatePages(AllocateAnyPages, EfiLoaderCode, pagesNeeded, &programBuffer);
   if(EFI_ERROR(status)) {
     error(u"ERROR: %x; Could not allocate memory for ELF program headers.\r\n", status);
     return NULL;
   }
 
   // Zero init buffer, to ensure 0 padding for all program sections
-  memset(programBuffer, 0, maxMemoryNeeded);
+  memset((VOID *)programBuffer, 0, maxMemoryNeeded);
+
+  // Fill in input params
+  *kernelBuffer = programBuffer;
+  *kernelSize = pagesNeeded * PAGE_SIZE;
 
   // Load program headers into buffer
   phdr = (ELF_Program_Header_64 *)((UINT8 *)ehdr + ehdr->e_phoff);
@@ -1339,7 +1354,7 @@ VOID *loadElf(VOID *elfBuffer) {
 // =================
 // Load PE32+ PIE File into a new buffer and return entry point for the loaded PE32+ Kernel
 // =================
-VOID *loadPe(VOID *peBuffer) {
+VOID *loadPe(VOID *peBuffer, EFI_PHYSICAL_ADDRESS *kernelBuffer, UINTN *kernelSize) {
   // Print PE Signature
   UINT8 peSigOffset = 0x3C; // From PE File Format
   UINT32 peSigPos = *(UINT32 *)((UINT8 *)peBuffer + peSigOffset); // Get PE signature offset
@@ -1402,15 +1417,19 @@ VOID *loadPe(VOID *peBuffer) {
 
   // Allocate buffer to load sections into
   EFI_STATUS status = 0;
-  VOID *progBuffer = NULL;
-  status = bs->AllocatePool(EfiLoaderData, optHeader->SizeOfImage, &progBuffer);
+  EFI_PHYSICAL_ADDRESS progBuffer = 0;
+  UINTN pagesNeeded = (optHeader->SizeOfImage + (PAGE_SIZE-1)) / PAGE_SIZE;
+  status = bs->AllocatePages(AllocateAnyPages, EfiLoaderCode, pagesNeeded, &progBuffer);
   if(EFI_ERROR(status)) {
     error(u"ERROR: %x; Could not allocate memory for PE file.\r\n", status);
     return NULL;
   }
 
   // Initialize buffer to 0, which should also take care of needing to 0-pad sections between raw data and virtual size
-  memset(progBuffer, 0, optHeader->SizeOfImage);
+  memset((VOID *)progBuffer, 0, optHeader->SizeOfImage);
+
+  *kernelBuffer = progBuffer;
+  *kernelSize = pagesNeeded * PAGE_SIZE;
 
   // Print section headers
   PE_Section_Header_64 *shdr = (PE_Section_Header_64 *)((UINT8 *)optHeader + coffHeader->SizeOfOptionalHeader);
@@ -1897,7 +1916,7 @@ void setRuntimeAddrMap(MemoryMapInfo *mMap){
 // =================
 EFI_STATUS loadKernel(void) {
 
-  VOID *diskBuffer = NULL;
+  EFI_PHYSICAL_ADDRESS *diskBuffer = NULL;
   VOID *fileBuffer = NULL;
   EFI_STATUS status = EFI_SUCCESS;
   UINTN fileSize = 0;
@@ -1964,7 +1983,7 @@ EFI_STATUS loadKernel(void) {
   }
 
   // Read disk lbas for file into buffer
-  diskBuffer = readDiskLbasToBuffer(diskLba, fileSize, imageMediaID);
+  diskBuffer = (VOID *)readDiskLbasToBuffer(diskLba, fileSize, imageMediaID, true);
   if(!diskBuffer) {
     error(u"ERROR: Could not find or read data partition file to buffer.\r\n");
     bs->FreePool(diskBuffer); // Free memory allocated for disk LBA buffer
@@ -1988,7 +2007,7 @@ EFI_STATUS loadKernel(void) {
   void EFIAPI (*entryPoint)(KernelParameters) = NULL;
 
   // Load Kernel File depending on format (initial header bytes)
-  UINT8 *hdr = diskBuffer;
+  UINT8 *hdr = (UINT8 *)diskBuffer;
   printf(u"File Format: ");
   printf(u"Header bytes: [%x][%x][%x][%x]\r\n", 
     hdr[0], 
@@ -1996,15 +2015,29 @@ EFI_STATUS loadKernel(void) {
     hdr[2], 
     hdr[3]
   );
+
+  EFI_PHYSICAL_ADDRESS kernelBuffer = 0;
+  UINTN kernelSize = 0;
   
   if(!memcmp(hdr, (UINT8[4]){0x7F, 'E', 'L', 'F'}, 4)) {
-    *(void **)&entryPoint = loadElf(diskBuffer);
+    *(void **)&entryPoint = loadElf(diskBuffer, &kernelBuffer, &kernelSize);
+
   } else if(!memcmp(hdr, (UINT8[2]){'M', 'Z'}, 2)) {
-    *(void **)&entryPoint = loadPe(diskBuffer);
+    *(void **)&entryPoint = loadPe(diskBuffer, &kernelBuffer, &kernelSize);
+
   } else {
     printf(u"No header bytes, assuming this is a flat binary file.\r\n");
-    *(void **)&entryPoint = diskBuffer; // get around compiler warning about function vs void pointer
+    // Flat binary executable code assumed to start at the beginning of the loaded buffer
+    *(void **)&entryPoint = diskBuffer;
+    kernelBuffer = (EFI_PHYSICAL_ADDRESS)diskBuffer;
+    kernelSize = fileSize;
   }
+
+  // Print info about kernel
+  printf(
+    u"\r\nKernel Address: %x, Size: %u, Entry Point: %x\r\n",
+    kernelBuffer, kernelSize, (UINTN)entryPoint
+  );
 
   if(!entryPoint) goto cleanup;
 

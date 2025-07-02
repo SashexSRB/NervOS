@@ -3,7 +3,8 @@
 #include <stdint.h>
 
 // Sample kernel. Draws the NERV Coat of Arms
-__attribute__((section(".kernel")))void EFIAPI kmain(KernelParameters params) {
+//__attribute__((section(".kernel"))) void EFIAPI kmain(KernelParameters params) {
+__attribute__((section(".kernel"), aligned(0x1000))) void EFIAPI kmain(KernelParameters params) {
   // Grab FrameBuffer and GOP info.
   UINT32 *fb = (UINT32 *)params.gopMode.FrameBufferBase;
   UINT32 screenWidth = params.gopMode.Info->HorizontalResolution;
@@ -51,4 +52,3 @@ __attribute__((section(".kernel")))void EFIAPI kmain(KernelParameters params) {
   // Should not return after shutting down
   __builtin_unreachable();
 }
-

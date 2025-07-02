@@ -13,7 +13,7 @@ KERNEL = kernel.nx
 # ELF64 PIE kernel binar
 #KERNEL = kernel.elf
 # PE32+ PIE kernel binary
-#KERNEL = kernel.pe
+# KERNEL = kernel.pe
 
 CC = x86_64-w64-mingw32-gcc -Wl,--subsystem,10 -e efi_main
 
