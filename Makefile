@@ -9,9 +9,9 @@ QEMU = ./qemu.sh
 TESTFILE = test.txt
 
 # Flat binary PIE kernel binary
-KERNEL = kernel.nx
+# KERNEL = kernel.nx
 # ELF64 PIE kernel binar
-#KERNEL = kernel.elf
+KERNEL = kernel.elf
 # PE32+ PIE kernel binary
 # KERNEL = kernel.pe
 
@@ -54,15 +54,15 @@ $(TESTFILE):
 # 	cp $@ $(DISK_IMG_FOLDER)
 
 #Flat binary MINGW GCC (PE)
-kernel.nx: kernel/kernel.c
-	x86_64-w64-mingw32-gcc -c $(CFLAGS) -fPIE -o kernel.o $<
-	x86_64-w64-mingw32-ld -nostdlib -Tkernel/kernel.ld --image-base=0 -pie -o kernel.obj kernel.o
-	objcopy -O binary kernel.obj $@
-	cp $@ $(DISK_IMG_FOLDER)
-
-# kernel.elf: kernel/kernel.c
-# 	clang $(CFLAGS) -fPIE -e kmain -nostdlib -o $@ $<
+# kernel.nx: kernel/kernel.c
+# 	x86_64-w64-mingw32-gcc -c $(CFLAGS) -fPIE -o kernel.o $<
+# 	x86_64-w64-mingw32-ld -nostdlib -Tkernel/kernel.ld --image-base=0 -pie -o kernel.obj kernel.o
+# 	objcopy -O binary kernel.obj $@
 # 	cp $@ $(DISK_IMG_FOLDER)
+
+kernel.elf: kernel/kernel.c
+	clang $(CFLAGS) -fPIE -e kmain -nostdlib -o $@ $<
+	cp $@ $(DISK_IMG_FOLDER)
 
 # kernel.pe: kernel/kernel.c
 # 	x86_64-w64-mingw32-gcc $(CFLAGS) -fPIE -e kmain -nostdlib -o $@ $<

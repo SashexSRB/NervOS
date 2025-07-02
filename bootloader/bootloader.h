@@ -2086,6 +2086,7 @@ EFI_STATUS loadKernel(void) {
   setRuntimeAddrMap(kparams.mMap);
 
   // Remap kernel to higher addresses (including entry point (and kparams?))
+  //mapPage();
    
   // Identity map framebuffer
 
