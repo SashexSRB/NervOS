@@ -11,9 +11,9 @@ TESTFILE = test.txt
 # Flat binary PIE kernel binary
 # KERNEL = kernel.nx
 # ELF64 PIE kernel binar
-KERNEL = kernel.elf
+# KERNEL = kernel.elf
 # PE32+ PIE kernel binary
-# KERNEL = kernel.pe
+KERNEL = kernel.pe
 
 CC = x86_64-w64-mingw32-gcc -Wl,--subsystem,10 -e efi_main
 
@@ -60,13 +60,13 @@ $(TESTFILE):
 # 	objcopy -O binary kernel.obj $@
 # 	cp $@ $(DISK_IMG_FOLDER)
 
-kernel.elf: kernel/kernel.c
-	clang $(CFLAGS) -fPIE -e kmain -nostdlib -o $@ $<
-	cp $@ $(DISK_IMG_FOLDER)
-
-# kernel.pe: kernel/kernel.c
-# 	x86_64-w64-mingw32-gcc $(CFLAGS) -fPIE -e kmain -nostdlib -o $@ $<
+# kernel.elf: kernel/kernel.c
+# 	clang $(CFLAGS) -fPIE -e kmain -nostdlib -o $@ $<
 # 	cp $@ $(DISK_IMG_FOLDER)
+
+kernel.pe: kernel/kernel.c
+	x86_64-w64-mingw32-gcc $(CFLAGS) -fPIE -e kmain -nostdlib -o $@ $<
+	cp $@ $(DISK_IMG_FOLDER)
 
 -include $(DEPENDS)
 

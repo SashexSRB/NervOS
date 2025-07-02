@@ -178,6 +178,94 @@ typedef struct {
   UINTN NumberOfTableEntries;
 } KernelParameters;
 
+// Kernel Entry Point Typedef
+typedef void EFIAPI (*EntryPoint)(KernelParameters);
+
+// KEY:
+// GDT = Global Descriptor Table
+// LDT = Local Descriptor Table
+// TSS = Task State Segment
+ 
+// Use this for GDTR with assembly "LGDT" instruction
+typedef struct {
+  UINT16 limit;
+  UINT64 base;
+} __attribute__((packed)) DescriptorRegister;
+
+// Descriptor e.g an array of these is used for the GDT/LDT
+typedef struct {
+  union {
+    UINT64 value;
+    struct {
+      UINT64 limit_15_0:  16;
+      UINT64 base_15_0:   16;
+      UINT64 base_23_16:  8;
+      UINT64 type:        4;
+      UINT64 s:           1;
+      UINT64 dpl:         2;
+      UINT64 p:           1;
+      UINT64 limit_19_16: 4;
+      UINT64 avl:         1;
+      UINT64 l:           1;
+      UINT64 d_b:         1;
+      UINT64 g:           1;
+      UINT64 base31_24:   8;
+    };
+  };
+} X86_64_Descriptor;
+
+// TSS/LDT Descriptor 64bit
+typedef struct {
+  X86_64_Descriptor descriptor;
+  UINT64 base63_32;
+  UINT32 zero;
+} TSS_LDT_Descriptor;
+
+// TSS Structure - TSS Descriptor points to this structure in the GDT
+typedef struct {
+  UINT32 reserved_1;
+  UINT32 RSP0_lower;
+  UINT32 RSP0_upper;
+  UINT32 RSP1_lower;
+  UINT32 RSP1_upper;
+  UINT32 RSP2_lower;
+  UINT32 RSP2_upper;
+  UINT32 reserved_2;
+  UINT32 reserved_3;
+  UINT32 IST1_lower;
+  UINT32 IST1_upper;
+  UINT32 IST2_lower;
+  UINT32 IST2_upper;
+  UINT32 IST3_lower;
+  UINT32 IST3_upper;
+  UINT32 IST4_lower;
+  UINT32 IST4_upper;
+  UINT32 IST5_lower;
+  UINT32 IST5_upper;
+  UINT32 IST6_lower;
+  UINT32 IST6_upper;
+  UINT32 IST7_lower;
+  UINT32 IST7_upper;
+  UINT32 reserved_4;
+  UINT32 reserved_5;
+  UINT16 reserved_6;
+  UINT16 io_map_base;
+} TSS;
+
+// Example GDT
+typedef struct {
+  X86_64_Descriptor null;
+  X86_64_Descriptor kernelCode64;
+  X86_64_Descriptor kernelData64;
+  X86_64_Descriptor userCode64;
+  X86_64_Descriptor userData64;
+  X86_64_Descriptor kernelCode32;
+  X86_64_Descriptor kernelData32;
+  X86_64_Descriptor userCode32;
+  X86_64_Descriptor userData32;
+  TSS_LDT_Descriptor tss;
+} GDT;
+
 // -----------------
 //  Global vars
 // -----------------
@@ -467,7 +555,7 @@ BOOLEAN printNum(UINTN number, UINT8 base, BOOLEAN isSigned) {
 // =================
 BOOLEAN eprintf(CHAR16 *fmt, va_list args) {
   BOOLEAN result = TRUE;
-  CHAR16 cstr[2]; // place init this with memset and use = {} initializer
+  CHAR16 cstr[2] = {0}; // place init this with memset and use = {} initializer
   
   //Initialize buffer
   cstr[0] = u'\0', cstr[1] = u'\0';
@@ -557,7 +645,7 @@ EFI_INPUT_KEY getKey(void) {
 // =================
 BOOLEAN printf(CHAR16 *fmt, ...) {
   BOOLEAN result = TRUE;
-  CHAR16 cstr[2]; // place init this with memset and use = {} initializer
+  CHAR16 cstr[2] = {0};; // place init this with memset and use = {} initializer
   va_list args;
   va_start(args, fmt);
   

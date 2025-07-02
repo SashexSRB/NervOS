@@ -25,7 +25,7 @@
 #define IMAGE_NT_OPTIONAL_HDR64_MAGIC 0x20B // PE32+ magic number
 
 // Kernel start address in higher memory (64bit)
-#define KERNEL_START_ADDR = 0xFFFFFFFF80000000
+#define KERNEL_START_ADDR 0xFFFFFFFF80000000
 
 typedef struct {
   UINT64 entries[512];
@@ -2004,7 +2004,7 @@ EFI_STATUS loadKernel(void) {
   KernelParameters kparams = {0}; // Defined in efilib.h
   
   kparams.gopMode = *gop->Mode; // Copy GOP mode info to kernel params;
-  void EFIAPI (*entryPoint)(KernelParameters) = NULL;
+  EntryPoint entryPoint = NULL;
 
   // Load Kernel File depending on format (initial header bytes)
   UINT8 *hdr = (UINT8 *)diskBuffer;
@@ -2033,13 +2033,21 @@ EFI_STATUS loadKernel(void) {
     kernelSize = fileSize;
   }
 
+  // Get new higher address kernel entry point to use
+  UINTN entryOffset = (UINTN)entryPoint - kernelBuffer;
+  EntryPoint higherEntry = (EntryPoint)(KERNEL_START_ADDR + entryOffset);
+
   // Print info about kernel
   printf(
-    u"\r\nKernel Address: %x, Size: %u, Entry Point: %x\r\n",
-    kernelBuffer, kernelSize, (UINTN)entryPoint
+    u"\r\nOriginal Kernel Address: %x, Size: %u\r\n"
+    u"Entry Point: %x, Higher Entry Point: %x\r\n",
+    kernelBuffer ,kernelSize, (UINTN)entryPoint, higherEntry
   );
 
-  if(!entryPoint) goto cleanup;
+  if(!entryPoint) {
+    bs->FreePages(kernelBuffer, kernelSize / PAGE_SIZE);
+    goto cleanup;
+  }
 
   printf(u"Press any key to load kernel...\r\n");
   getKey();
@@ -2085,24 +2093,94 @@ EFI_STATUS loadKernel(void) {
   // Identity map runtime services memory & set new addres map
   setRuntimeAddrMap(kparams.mMap);
 
-  // Remap kernel to higher addresses (including entry point (and kparams?))
-  //mapPage();
+  // Remap Kernel to higher address
+  for (UINTN i = 0; i < (kernelSize + (PAGE_SIZE-1)) / PAGE_SIZE; i++) {
+    mapPage(kernelBuffer + (i*PAGE_SIZE), KERNEL_START_ADDR + (i*PAGE_SIZE) , kparams.mMap);
+  }
+
+  // NOTE: Remap kparams to higher address?
    
   // Identity map framebuffer
-
+  for (UINTN i = 0; i < (kparams.gopMode.FrameBufferSize + (PAGE_SIZE-1)) / PAGE_SIZE; i++) {
+    identityMapPage(kparams.gopMode.FrameBufferBase + (i * PAGE_SIZE), kparams.mMap);
+  }
+  
   // Identity map new stack for kernel
+  const UINTN STACK_PAGES = 16;
+  void *kernelStack = allocateMemoryMapPages(kparams.mMap, STACK_PAGES); // 64KiB stack
+  uint32_t stackSize = STACK_PAGES * PAGE_SIZE;
+  memset(kernelStack, 0, stackSize);
+
+  for (UINTN i=0; i < STACK_PAGES; i++) {
+    identityMapPage((UINTN)kernelStack + (i*PAGE_SIZE), kparams.mMap);
+  }
 
   // Set up new GDT ad TSS
+  TSS tss = {.io_map_base = sizeof(TSS)};
+  UINTN tssAddress = (UINTN)&tss;
+  
+  GDT gdt = {
+    .null.value =         0x0000000000000000, 
+    .kernelCode64.value = 0x00AF9A000000FFFF, 
+    .kernelData64.value = 0x00CF92000000FFFF,
+    .userCode64.value =   0x00AFFA000000FFFF, 
+    .userData64.value =   0x00CFF2000000FFFF, 
+    .kernelCode32.value = 0x00CF9A000000FFFF, 
+    .kernelData32.value = 0x00CF92000000FFFF, 
+    .userCode32.value =   0x00CFFA000000FFFF, 
+    .userData32.value =   0x00CFF2000000FFFF,
+    .tss = {
+      .descriptor = {
+        .limit_15_0 = sizeof tss -1,
+        .base_15_0 = tssAddress & 0xFFFF,
+        .base_23_16 = (tssAddress >> 16) & 0xFF,
+        .type = 9, //0b1001 64bit TSS 
+        .p = 1, // Present
+        .base31_24 = (tssAddress >> 24) & 0xFF,
+      },
+      .base63_32 = (tssAddress >> 32) & 0xFFFFFFFF,
+    }
+  };
 
-  // clear interrupts before setting up new GDT/paging/etc.
-  __asm__ __volatile__("cli");
+  DescriptorRegister gdtr = {.limit = sizeof gdt - 1, .base = (UINT64)&gdt};
+
+  KernelParameters *kparamsPtr = &kparams; // Get pointer to kernel fpr RCX as first parameter for x86_64 MS ABI
 
   // Set new page tables (CR3 = PML4) and GDT (lgdt && ltr), and call entry point with params
-  
-  // Test calling PE, ELF, and flat bin kernels/entry points
+  __asm__ __volatile__(
+    "cli\n"                   // Clear interrupts before setting new page tables
+    "movq %[pml4]0, %%CR3\n"  // Load new page tables
+    "lgdt %[gdt]\n"           // Load new GDT from GDTR register
+    "ltr %[tss]\n"            // Load new task register with new TSS value
 
-  // Call kernel entry point with parameters, fully in control now, no EFI anymore.
-  entryPoint(kparams);
+    // Jump to new code segment in GDT (offset in GDT of 64 bit kernel/system code segment)
+    "pushq $0x8\n"
+    "leaq 1f(%%RIP), %%RAX\n"
+    "pushq %%RAX\n"
+    "lretq\n"
+
+    // Executing code with new Code secment now, set up remaining segment registers
+    "1:\n"
+    "movq $0x10, %%RAX\n" // Data segment to use (64 bit kernel data segment, offset in GDT)
+    "movq %%RAX, %%DS\n"  // Data segment
+    "movq %%RAX, %%ES\n"  // Extra segment
+    "movq %%RAX, %%FS\n"  // Extra segment (2), these also have different uses in Long Mode
+    "movq %%RAX, %%GS\n"  // Extra segment (3), these also have different uses in Long Mode
+    "movq %%RAX, %%SS\n"  // Stack segment
+
+    // Set new stack value to use (for SP/stack pointer, etc.)
+    "movq %[stack], %%RSP\n"
+
+    // Call new entry point in higher memory
+    "callq *%[entry]\n" // First param is kparamsPtr in RCX
+  :
+  : [pml4]"r"(pml4), [gdt]"m"(gdtr), [tss]"r"((UINT16)0x48),
+    [stack]"gm"((UINTN)kernelStack + (STACK_PAGES * PAGE_SIZE)),
+    [entry]"b"(higherEntry), "c"(kparamsPtr)
+  : "rax", "memory"
+  );
+
+  // Test calling PE, ELF, and flat bin kernels/entry points
 
   // Should not return to this point!
   __builtin_unreachable();
