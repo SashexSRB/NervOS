@@ -158,16 +158,16 @@ EFI_Guid_String configTableGuidsAndStrings[] = {
 
 // General ACPI description header
 typedef struct {
-  UINT8 signature[4];
+  char signature[4];
   UINT32 length;
   UINT8 revision;
   UINT8 checksum;
-  UINT8 OEMID[6];
-  UINT8 OEMTableID[8];
+  char OEMID[6];
+  char OEMTableID[8];
   UINT32 OEMRevision;
-  UINT32 creatorID;
+  char creatorID;
   UINT32 creatorRevision;
-} __attribute__ ((packed)) ACPI_Description_Header;
+} ACPI_TABLE_HEADER;
 
 // Example Kernel Parameters
 typedef struct {

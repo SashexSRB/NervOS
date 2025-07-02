@@ -17,9 +17,23 @@
 #define HL_BG_COLOR EFI_LIGHTGRAY
 #define px_LGRAY { 0xEE, 0xEE, 0xEE, 0x00 }
 #define px_BLACK { 0x00, 0x00, 0x00, 0x00 }
-#define PAGE_SIZE 4096 
+
+#define PHYSICAL_PAGE_ADDR_MASK 0x000FFFFFFFFFF000 // 52 bits physical addr limit, lowest 12 are for flags only
+#define PAGE_SIZE 4096
+
 #define IMAGE_FILE_MACHINE_AMD64 0x8664
 #define IMAGE_NT_OPTIONAL_HDR64_MAGIC 0x20B // PE32+ magic number
+
+typedef struct {
+  UINT64 entries[512];
+} pageTable;
+
+// Page flags: bits 11-0
+enum {
+  PRESENT = (1 << 0),
+  RW =(1 << 1),
+  USER = (1 << 2)
+};
 
 // =================
 // Set global vars
@@ -51,6 +65,8 @@ EFI_GRAPHICS_OUTPUT_BLT_PIXEL cursorBuffer[] = {
 };
 // Buffer to save FB data at cursor position
 EFI_GRAPHICS_OUTPUT_BLT_PIXEL savedBuffer[8*8] = {0};
+
+pageTable *pml4 = NULL; // Top level 4 page level for x86-64 long mode paging
 
 // =================
 // Set text mode
@@ -1560,7 +1576,7 @@ VOID *getConfigTableByGuid(EFI_GUID guid) {
 // =================
 // Print ACPI Table header
 // =================
-EFI_STATUS printAcpiTableHeader(ACPI_Description_Header header) {
+EFI_STATUS printAcpiTableHeader(ACPI_TABLE_HEADER header) {
   printf(
     u"Signature: %c%c%c%c\r\n"
     u"Length: %u\r\n"
@@ -1681,11 +1697,11 @@ EFI_STATUS printAcpiTables(void) {
   printf(u"\r\nPress any key to print RSDT/XSDT...\r\n");
   getKey();
 
-  ACPI_Description_Header *header = NULL;
+  ACPI_TABLE_HEADER *header = NULL;
   UINT64 xsdtAddress =  *(UINT64 *)&rsdp[24];
   if(acpi2) {
     // Print XSDT header
-    header = (ACPI_Description_Header *)xsdtAddress;
+    header = (ACPI_TABLE_HEADER *)xsdtAddress;
     printAcpiTableHeader(*header);
 
     printf(u"\r\nPress any key to print XSDT Entries...\r\n");
@@ -1694,7 +1710,7 @@ EFI_STATUS printAcpiTables(void) {
     printf(u"Entries:\r\n");
     UINT64 *entry = (UINT64 *)((UINT8 *)header + sizeof *header); // Header = *= Size of header
     for (UINTN i = 0; i < (header->length - sizeof *header) / 8; i++) {
-      ACPI_Description_Header *tableHeader = (ACPI_Description_Header *)entry[i];
+      ACPI_TABLE_HEADER *tableHeader = (ACPI_TABLE_HEADER *)entry[i];
       printf(
         u"%c%c%c%c\r\n",
         tableHeader->signature[0], tableHeader->signature[1], tableHeader->signature[2], tableHeader->signature[3] 
@@ -1715,7 +1731,169 @@ EFI_STATUS printAcpiTables(void) {
 }
 
 // =================
-// Read Files from Data Partition
+// ALlocate pages from available UEFI Memory Map
+// =================
+void *allocateMemoryMapPages(MemoryMapInfo *mMap, UINTN pages) {
+  static void *nextPageAddr = NULL; // Next page/page range address to return to called
+  static UINTN currDescriptor = 0; // Current descriptor number
+  static UINTN remainingPages = 0;  // Remaining pages in current descriptor
+
+  if (remainingPages < pages) {
+    // Not enough remaining pages in current descriptor, find next available one
+    UINTN i = 0;
+    for (i = currDescriptor + 1; i < mMap->size / mMap->descriptorSize; i++) {
+      EFI_MEMORY_DESCRIPTOR *desc = (EFI_MEMORY_DESCRIPTOR *)((UINT8 *)mMap->map + (i * mMap->descriptorSize));
+      if (desc->Type == EfiConventionalMemory && desc->NumberOfPages >= pages) {
+        // Found enough memory to use at this descriptor, use it
+        currDescriptor = i;
+        remainingPages = desc->NumberOfPages - pages;
+        nextPageAddr = (void *)(desc->PhysicalStart + (pages * PAGE_SIZE));
+        return (void *)desc->PhysicalStart;
+      }
+    }
+    if(i >= mMap->size / mMap->descriptorSize ) {
+      // Ran out of descriptiros to check in memory map
+      error(u"ERROR: Could not find any memory to allocate pages for.\r\n");
+      return NULL;
+    }
+  }
+
+  // Else we have at least enough pags for this allocation, return the current spot in memory map
+  remainingPages -= pages;
+  void *page = nextPageAddr;
+  nextPageAddr = (void *)((UINT8 *)page + (pages * PAGE_SIZE));
+  return page;
+}
+
+// =================
+// Map a virtual addres to a physical address
+// =================
+void mapPage(UINTN physAddr, UINTN virAddr, MemoryMapInfo *mMap) {
+  int flags = PRESENT | RW | USER; // 0b111
+
+  UINTN pml4Idx = ((virAddr) >> 39) & 0x1FF; // 0-511
+  UINTN pdptIdx = ((virAddr) >> 30) & 0x1FF; // 0-511
+  UINTN pdtIdx  = ((virAddr) >> 21) & 0x1FF; // 0-511
+  UINTN ptIdx   = ((virAddr) >> 12) & 0x1FF; // 0-511
+
+  // Make sure pdpt exists, if not, then allocate it
+  if(!(pml4->entries[pml4Idx] & PRESENT)) {
+    void *pdptAddr = allocateMemoryMapPages(mMap, 1);
+
+    memset(pdptAddr, 0, sizeof(pageTable));
+    pml4->entries[pml4Idx] = (UINTN)pdptAddr | flags;
+  }
+
+  // Make sure pdt exists, if not, allocate
+  pageTable *pdpt = (pageTable *)(pml4->entries[pml4Idx] & PHYSICAL_PAGE_ADDR_MASK);
+  if(!(pdpt->entries[pdptIdx] & PRESENT)) {
+    void *pdtAddr = allocateMemoryMapPages(mMap, 1);
+    
+    memset(pdtAddr, 0, sizeof(pageTable));
+    pdpt->entries[pdptIdx] = (UINTN)pdtAddr | flags;
+  }
+
+  // Make sure pt exists, if not allocate
+  pageTable *pdt = (pageTable *)(pdpt->entries[pdptIdx] & PHYSICAL_PAGE_ADDR_MASK);
+  if(!(pdt->entries[pdtIdx] & PRESENT)) {
+    void *ptAddr = allocateMemoryMapPages(mMap, 1);
+    
+    memset(ptAddr, 0, sizeof(pageTable));
+    pdt->entries[pdtIdx] = (UINTN)ptAddr | flags;
+  }
+
+  // Map new page if not present
+  pageTable *pt = (pageTable *)(pdt->entries[pdtIdx] & PHYSICAL_PAGE_ADDR_MASK);
+  if(!(pt->entries[ptIdx] & PRESENT)) pt->entries[ptIdx] = (physAddr & PHYSICAL_PAGE_ADDR_MASK) | flags;
+}
+
+// =================
+// Unmap a page/virtAddr
+// =================
+void unmapPage(UINTN virAddr) {
+  UINTN pml4Idx = ((virAddr) >> 39) & 0x1FF; // 0-511
+  UINTN pdptIdx = ((virAddr) >> 30) & 0x1FF; // 0-511
+  UINTN pdtIdx  = ((virAddr) >> 21) & 0x1FF; // 0-511
+  UINTN ptIdx   = ((virAddr) >> 12) & 0x1FF; // 0-511
+
+  pageTable *pdpt = (pageTable *)(pml4->entries[pml4Idx] & PHYSICAL_PAGE_ADDR_MASK);
+  pageTable *pdt = (pageTable *)(pdpt->entries[pdptIdx] & PHYSICAL_PAGE_ADDR_MASK);
+  pageTable *pt = (pageTable *)(pdt->entries[pdtIdx] & PHYSICAL_PAGE_ADDR_MASK);
+
+  pt->entries[ptIdx] = 0; /// Wipe page in page table to unmap phys addr there
+
+  // Flush the TLB cache for this cache
+  __asm__ __volatile__("invlpg (%0)\n" : : "r"(virAddr));
+
+}
+
+// =================
+// Identity map a page of memory, virtual = phys addr
+// =================
+void identityMapPage(UINTN address, MemoryMapInfo *mMap) {
+  mapPage(address, address, mMap);
+}
+
+// =================
+// Initialize new paging setup by identity mapping all available memory from EFI memory map
+// =================
+void identityMapEfiMemMap(MemoryMapInfo *mMap) {
+  UINTN descCount = mMap->size / mMap->descriptorSize;
+  for (UINTN i = 0; i < descCount; i++) {
+    EFI_MEMORY_DESCRIPTOR *desc = (EFI_MEMORY_DESCRIPTOR *)((UINT8 *)mMap->map + (i * mMap->descriptorSize));
+
+    for (UINTN j = 0; j < desc->NumberOfPages; j++) identityMapPage(desc->PhysicalStart + (j * PAGE_SIZE), mMap);
+  }
+}
+
+// =================
+// Identity map runtime memory desc only, to use with runtime services setVirtualAddressMap();
+// =================
+void setRuntimeAddrMap(MemoryMapInfo *mMap){
+  // First get amount of memory to alloc for runtime memory map
+  UINTN runtimeDescriptors = 0;
+  UINTN descCount = mMap->size / mMap->descriptorSize;
+  for (UINTN i = 0; i < descCount; i++) {
+    EFI_MEMORY_DESCRIPTOR *desc = (EFI_MEMORY_DESCRIPTOR *)((UINT8 *)mMap->map + (i * mMap->descriptorSize));
+    
+    if (desc->Attribute & EFI_MEMORY_RUNTIME) runtimeDescriptors++;
+  }
+
+  // Alloc memory for runtime mem map
+  UINTN runtimeMemMapPages = (runtimeDescriptors * mMap->descriptorSize) + ((PAGE_SIZE-1) / PAGE_SIZE);
+  EFI_MEMORY_DESCRIPTOR *runtimeMemMap = allocateMemoryMapPages(mMap, runtimeMemMapPages);
+  if (!runtimeMemMap) {
+    error(u"ERROR: Could not allocate runtime descriptors memory map.\r\n");
+    return;
+  }
+
+  // Identity map all runtime descs in each desc
+  UINTN runtimeMemMapSize = runtimeMemMapPages * PAGE_SIZE;
+  memset(runtimeMemMap, 0, runtimeMemMapSize);
+
+  // Set all runtime descriptors in new runtime memory map, and identity map them
+  UINTN currentRuntimeDesc = 0;
+  for (UINTN i = 0; i < descCount; i++) {
+    EFI_MEMORY_DESCRIPTOR *desc = (EFI_MEMORY_DESCRIPTOR *)((UINT8 *)mMap->map + (i * mMap->descriptorSize));
+    
+    if (desc->Attribute & EFI_MEMORY_RUNTIME) {
+      EFI_MEMORY_DESCRIPTOR *runtimeDesc = (EFI_MEMORY_DESCRIPTOR *)((UINT8 *)runtimeMemMap + (currentRuntimeDesc * mMap->descriptorSize));
+
+      memcpy(runtimeDesc, desc, mMap->descriptorSize);
+      runtimeDesc->VirtualStart = runtimeDesc->PhysicalStart;
+      currentRuntimeDesc++;
+    }
+  }
+
+  // Set new virtual addresses for runtime memory via SetVirtualAddressMap()
+  EFI_STATUS status = rs->SetVirtualAddressMap(runtimeMemMapSize, mMap->descriptorSize, mMap->descriptorVersion, runtimeMemMap);
+  if(EFI_ERROR(status)) {
+    error(u"ERROR: SetVirtualAddressMap()\r\n");
+  }
+}
+
+// =================
+// Load Kernel
 // =================
 EFI_STATUS loadKernel(void) {
 
@@ -1863,6 +2041,26 @@ EFI_STATUS loadKernel(void) {
   kparams.RuntimeServices = rs;
   kparams.NumberOfTableEntries = st->NumberOfTableEntries;
   kparams.ConfigurationTable = st->ConfigurationTable;
+
+  // Setup new level4 paging & page tables
+  pml4 = allocateMemoryMapPages(kparams.mMap, 1);
+  memset(pml4, 0, sizeof *pml4);
+
+  // Initialize new paging setup by identity mapping all available memory
+  identityMapEfiMemMap(kparams.mMap);
+
+  // Identity map runtime services memory & set new addres map
+  setRuntimeAddrMap(kparams.mMap);
+
+  // clear interrupts before setting up new GDT/paging/etc.
+  __asm__ __volatile__("cli");
+
+  // Setup new GDT & TSS
+
+  // Set new page tables (CR3 = PML4) and GDT (lgdt && ltr), and jump/call entry point with params
+
+  // Remap kernel to higher addresses
+
   // Call kernel entry point with parameters, fully in control now, no EFI anymore.
   entryPoint(kparams);
 
