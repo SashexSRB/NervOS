@@ -5,7 +5,7 @@
 # Launch QEMU with USB passthrough
 qemu-system-x86_64 \
 -drive format=raw,file=test.hdd \
--bios /usr/share/ovmf/OVMF.fd \
+-bios bios64.bin \
 -m 256M \
 -vga std \
 -display gtk,gl=on,zoom-to-fit=off,window-close=on \

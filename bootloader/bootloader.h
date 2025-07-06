@@ -46,6 +46,7 @@ void initGlbVars(EFI_HANDLE handle, EFI_SYSTEM_TABLE *systable) {
   cin = systable->ConIn;
   //cerr = systable->StdErr; // TODO: Research why it doesnt work in emulation
   cerr = cout; // Temporary
+  printfCout = cout; // Printf specific cout or cerr
   st = systable;
   bs = st->BootServices;
   rs = st->RuntimeServices;
@@ -248,7 +249,7 @@ VOID *readEspFileToBuffer(CHAR16 *path, UINTN *fileSize) {
   EFI_LOADED_IMAGE_PROTOCOL *lip = NULL;
   status = bs->OpenProtocol(image, &lipGuid, (VOID **)&lip, image, NULL, EFI_OPEN_PROTOCOL_BY_HANDLE_PROTOCOL);
   if(EFI_ERROR(status)) {
-    error(u"ERROR: %x; Could not open Loaded Image Protocol!\r\n", status);
+    error(status, u"Could not open Loaded Image Protocol!\r\n");
     goto cleanup;
   }
 
@@ -257,7 +258,7 @@ VOID *readEspFileToBuffer(CHAR16 *path, UINTN *fileSize) {
   EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *sfsp = NULL;
   status = bs->OpenProtocol(lip->DeviceHandle, &sfspGuid, (VOID **)&sfsp, image, NULL, EFI_OPEN_PROTOCOL_BY_HANDLE_PROTOCOL);
   if(EFI_ERROR(status)) {
-    error(u"Error %x: Could not open Simple FileSystem Protocol\r\n", status);
+    error(status, u"Could not open Simple FileSystem Protocol\r\n");
     goto cleanup;
   }
 
@@ -265,7 +266,7 @@ VOID *readEspFileToBuffer(CHAR16 *path, UINTN *fileSize) {
   EFI_FILE_PROTOCOL *root = NULL;
   status = sfsp->OpenVolume(sfsp, &root);
   if(EFI_ERROR(status)) {
-    error(u"Error %x: Could not open volume for root directory in ESP!\r\n", status);
+    error(status, u"Could not open volume for root directory in ESP!\r\n");
     goto cleanup;
   }
 
@@ -273,7 +274,7 @@ VOID *readEspFileToBuffer(CHAR16 *path, UINTN *fileSize) {
   EFI_FILE_PROTOCOL *file = NULL;
   status = root->Open(root, &file, path, EFI_FILE_MODE_READ, 0);
   if(EFI_ERROR(status)) {
-    error(u"Error %x: Could not open file '%s' for reading!\r\n", status, path);
+    error(status, u"Could not open file '%s' for reading!\r\n", path);
     goto cleanup;
   }
   // Something is broken here
@@ -283,7 +284,7 @@ VOID *readEspFileToBuffer(CHAR16 *path, UINTN *fileSize) {
   UINTN bufferSize = sizeof(EFI_FILE_INFO);
   status = file->GetInfo(file, &fileInfoGuid, &bufferSize, &fileInfo);
   if(EFI_ERROR(status)) {
-    error(u"Error %x: Could not get file info for '%s'!\r\n", status, path);
+    error(status, u"Could not get file info for '%s'!\r\n", path);
     goto fileCleanup;
   }
 
@@ -291,19 +292,19 @@ VOID *readEspFileToBuffer(CHAR16 *path, UINTN *fileSize) {
   bufferSize = fileInfo.FileSize;
   status = bs->AllocatePool(EfiLoaderData, bufferSize, &fileBuffer);
   if(EFI_ERROR(status) || bufferSize != fileInfo.FileSize) {
-    error(u"Error %x: Could not allocate memory for '%s'!\r\n", status, path);
+    error(status, u"Could not allocate memory for '%s'!\r\n", path);
     goto fileCleanup;
   }
 
   if(EFI_ERROR(status)) {
-    error(u"Error %x: Could not get file info for file %s!\r\n", status, path);
+    error(status, u"Could not get file info for file %s!\r\n", path);
     goto fileCleanup;
   } 
 
   // Read file into buffer
   status = file->Read(file, &bufferSize, fileBuffer);
   if(EFI_ERROR(status) || bufferSize != fileInfo.FileSize) {
-    error(u"Error %x: Could not read file '%s' into buffer!\r\n", status, path);
+    error(status, u"Could not read file '%s' into buffer!\r\n", path);
     goto fileCleanup;
   }
   
@@ -339,7 +340,7 @@ EFI_PHYSICAL_ADDRESS readDiskLbasToBuffer(EFI_LBA diskLba, UINTN dataSize, UINT3
   
   status = bs->LocateHandleBuffer(ByProtocol, &bipGuid, NULL, &numHandles, &handleBuffer);
   if(EFI_ERROR(status)) {
-    error(u"ERROR: %x Could not locate Block IO Protocol handles!\r\n", status);
+    error(status, u"Could not locate Block IO Protocol handles!\r\n");
     return buffer;
   }
 
@@ -349,7 +350,7 @@ EFI_PHYSICAL_ADDRESS readDiskLbasToBuffer(EFI_LBA diskLba, UINTN dataSize, UINT3
     // Open Block IO Protocol for each handle
     status = bs->OpenProtocol(handleBuffer[i], &bipGuid, (VOID **)&bip, image, NULL, EFI_OPEN_PROTOCOL_BY_HANDLE_PROTOCOL);
     if(EFI_ERROR(status)) {
-      error(u"ERROR: %x Could not open Block IO Protocol for handle %u!\r\n", status, i);
+      error(status, u"Could not open Block IO Protocol for handle %u!\r\n", i);
       bs->CloseProtocol(handleBuffer[i], &bipGuid, image, NULL);
       continue; // Try next handle
     }
@@ -362,7 +363,7 @@ EFI_PHYSICAL_ADDRESS readDiskLbasToBuffer(EFI_LBA diskLba, UINTN dataSize, UINT3
   }
 
   if(!found) {
-    error(u"ERROR: %x; Could not find Block IO Protocol for disk with ID: %u!\r\n", status, diskMediaID);
+    error(status, u"Could not find Block IO Protocol for disk with ID: %u!\r\n", diskMediaID);
     return buffer;
   } 
 
@@ -373,7 +374,7 @@ EFI_PHYSICAL_ADDRESS readDiskLbasToBuffer(EFI_LBA diskLba, UINTN dataSize, UINT3
   status = bs->OpenProtocol(handleBuffer[i], &dipGuid, (VOID **)&dip, image, NULL, EFI_OPEN_PROTOCOL_BY_HANDLE_PROTOCOL);
 
   if(EFI_ERROR(status)) {
-    error(u"ERROR: %x Could not open Disk IO Protocol on handle: %u!\r\n", status, i);
+    error(status, u"Could not open Disk IO Protocol on handle: %u!\r\n", i);
     goto cleanup;
   }
 
@@ -385,7 +386,7 @@ EFI_PHYSICAL_ADDRESS readDiskLbasToBuffer(EFI_LBA diskLba, UINTN dataSize, UINT3
     status = bs->AllocatePages(AllocateAnyPages, EfiLoaderData, pagesNeeded, &buffer);
   }
   if(EFI_ERROR(status) || (VOID *)buffer == NULL) {
-    error(u"ERROR: %x Could not allocate buffer for disk data!\r\n", status);
+    error(status, u"Could not allocate buffer for disk data!\r\n");
     bs->CloseProtocol(handleBuffer[i], &dipGuid, image, NULL);
     goto cleanup;
   }
@@ -393,7 +394,7 @@ EFI_PHYSICAL_ADDRESS readDiskLbasToBuffer(EFI_LBA diskLba, UINTN dataSize, UINT3
   // Use Disk IO Read to read into allocated buffer
   status = dip->ReadDisk(dip, diskMediaID, diskLba * bip->Media->BlockSize, dataSize, (VOID *)buffer);
   if(EFI_ERROR(status)) {
-    error(u"ERROR: %x Could not read disk LBAs into buffer!\r\n", status);
+    error(status, u"Could not read disk LBAs into buffer!\r\n");
   }
 
   bs->CloseProtocol(handleBuffer[i], &dipGuid, image, NULL); // Close Block IO Protocol for this handle
@@ -426,7 +427,7 @@ EFI_STATUS setGraphicsMode(void) {
   status = bs->LocateProtocol(&gopGuid, NULL, (VOID **)&gop);
 
   if(EFI_ERROR(status)) {
-    error(u"ERROR: %x Could not locate GOP! :(\r\n", status);
+    error(status, u"Could not locate GOP!\r\n");
     return status;
   }
 
@@ -440,7 +441,7 @@ EFI_STATUS setGraphicsMode(void) {
     status = gop->QueryMode(gop, gop->Mode->Mode, &modeInfoSize, &modeInfo);
 
     if(EFI_ERROR(status)) {
-      error(u"ERROR: %x Could not Query GOP Mode %u\r\n", status, gop->Mode->Mode);
+      error(status, u"Could not Query GOP Mode %u\r\n", gop->Mode->Mode);
       //return status;
     }
 
@@ -657,7 +658,7 @@ EFI_STATUS testMouse(void) {
   status = bs->LocateProtocol(&gopGuid, NULL, (VOID **)&gop);
 
   if(EFI_ERROR(status)) {
-    error(u"ERROR: %x Could not locate GOP! :(\r\n", status);
+    error(status, u"Could not locate GOP!\r\n");
     return status;
   }
 
@@ -666,7 +667,7 @@ EFI_STATUS testMouse(void) {
   // Use LocateHandleBuffer() to find all SPP and get a valid one.
   status = bs->LocateHandleBuffer(ByProtocol, &sppGuid, NULL, &numHandles, &handleBuffer);
   if (EFI_ERROR(status)) {
-    error(u"\r\nERROR: %x; Could not locate SPP handle buffer!\r\n", status);
+    error(status, u"\r\nCould not locate SPP handle buffer!\r\n");
   }
 
   cout->ClearScreen(cout);
@@ -677,7 +678,7 @@ EFI_STATUS testMouse(void) {
     status = bs->OpenProtocol(handleBuffer[i], &sppGuid, (VOID **)&spp[i], image, NULL, EFI_OPEN_PROTOCOL_BY_HANDLE_PROTOCOL);
 
     if(EFI_ERROR(status)) {
-      error(u"\r\nERROR: %x; Could not Open SPP on handle!\r\n", status);
+      error(status, u"\r\nCould not Open SPP on handle!\r\n");
       continue;
     }
 
@@ -706,7 +707,7 @@ EFI_STATUS testMouse(void) {
     } // Found a valid mode
   }
 
-  if(!foundMode) error(u"\r\nERROR: Could not find any valid SPP mode!\r\n");  
+  if(!foundMode) error(0, u"\r\nCould not find any valid SPP mode!\r\n");  
 
   // Free memory pool allocated by LocateHandleBuffer()
   bs->FreePool(handleBuffer);
@@ -718,7 +719,7 @@ EFI_STATUS testMouse(void) {
 
   status = bs->LocateHandleBuffer(ByProtocol, &appGuid, NULL, &numHandles, &handleBuffer);
   if (EFI_ERROR(status)) {
-    error(u"\r\nERROR: %x; Could not locate APP handle buffer!\r\n", status);
+    error(status, u"\r\nCould not locate APP handle buffer!\r\n");
   }
 
   // Open all APP for each handle.
@@ -726,7 +727,7 @@ EFI_STATUS testMouse(void) {
     status = bs->OpenProtocol(handleBuffer[i], &appGuid, (VOID **)&app[i], image, NULL, EFI_OPEN_PROTOCOL_BY_HANDLE_PROTOCOL);
 
     if(EFI_ERROR(status)) {
-      error(u"\r\nERROR: %x; Could not Open APP on handle!\r\n", status);
+      error(status, u"\r\nCould not Open APP on handle!\r\n");
       continue;
     }
 
@@ -757,10 +758,10 @@ EFI_STATUS testMouse(void) {
     } // Found a valid mode
   }
 
-  if(!foundMode) error(u"\r\nERROR: Could not find any valid APP mode!\r\n");
+  if(!foundMode) error(0, u"\r\nCould not find any valid APP mode!\r\n");
 
   if(numProtocols == 0 ) {
-    error(u"\r\nERROR: Could not find any S/APPs!\r\n");
+    error(0, u"\r\nCould not find any S/APPs!\r\n");
     getKey();
     return 1;
   }
@@ -922,7 +923,7 @@ EFI_STATUS readEspFiles(void) {
   status = bs->OpenProtocol(image, &lipGuid, (VOID **)&lip, image, NULL, EFI_OPEN_PROTOCOL_BY_HANDLE_PROTOCOL);
 
   if(EFI_ERROR(status)) {
-    error(u"Error %x: Could not open Loaded Image Protocol\r\n", status);
+    error(status, u"Could not open Loaded Image Protocol\r\n");
     return status;
   }
 
@@ -933,7 +934,7 @@ EFI_STATUS readEspFiles(void) {
   status = bs->OpenProtocol(lip->DeviceHandle, &sfspGuid, (VOID **)&sfsp, image, NULL, EFI_OPEN_PROTOCOL_BY_HANDLE_PROTOCOL);
   
   if(EFI_ERROR(status)) {
-    error(u"Error %x: Could not open Simple FileSystem Protocol\r\n", status);
+    error(status, u"Could not open Simple FileSystem Protocol\r\n");
     return status;
   }
   
@@ -942,7 +943,7 @@ EFI_STATUS readEspFiles(void) {
   status = sfsp->OpenVolume(sfsp, &dirp);
 
   if(EFI_ERROR(status)) {
-    error(u"Error %x: Could not open volume for root directory\r\n", status);
+    error(status, u"Could not open volume for root directory\r\n");
     goto cleanup;
   }
 
@@ -1019,7 +1020,7 @@ EFI_STATUS readEspFiles(void) {
             status = dirp->Open(dirp, &newDir, fileInfo.FileName, EFI_FILE_MODE_READ, 0);
 
             if(EFI_ERROR(status)) {
-              error(u"Error %x: Could not open new directory %s\r\n", status, fileInfo.FileName);
+              error(status, u"Could not open new directory %s\r\n", fileInfo.FileName);
               goto cleanup;
             }
 
@@ -1053,7 +1054,7 @@ EFI_STATUS readEspFiles(void) {
           status = bs->AllocatePool(EfiLoaderData, buffSize, &buffer);
 
           if(EFI_ERROR(status)) {
-              error(u"Error %x: Could not allocate memory for file %s\r\n", status, fileInfo.FileName);
+              error(status, u"Could not allocate memory for file %s\r\n", fileInfo.FileName);
               goto cleanup;
           }
 
@@ -1062,7 +1063,7 @@ EFI_STATUS readEspFiles(void) {
           status = dirp->Open(dirp, &file, fileInfo.FileName, EFI_FILE_MODE_READ, 0);
 
           if(EFI_ERROR(status)) {
-              error(u"Error %x: Could not open file %s\r\n", status, fileInfo.FileName);
+              error(status, u"Could not open file %s\r\n", fileInfo.FileName);
               goto cleanup;
           }
 
@@ -1070,13 +1071,14 @@ EFI_STATUS readEspFiles(void) {
           buffSize = fileInfo.FileSize;
           status = dirp->Read(file, &buffSize, buffer);
           if(EFI_ERROR(status)) {
-              error(u"Error %x: Could not read file %s into buffer.\r\n", status, fileInfo.FileName);
+              error(status, u"Could not read file %s into buffer.\r\n", fileInfo.FileName);
               goto cleanup;
           }
 
           if(buffSize != fileInfo.FileSize) {
             error(
-              u"Error: Could not read all file %s into buffer.\r\n"
+              0,
+              u"Could not read all file %s into buffer.\r\n"
               u"Bytes read: %u, Expected: %u\r\n",
               fileInfo.FileName,
               buffSize,
@@ -1137,7 +1139,7 @@ EFI_STATUS getDiskImageMediaID(UINT32 *mediaID) {
   status = bs->OpenProtocol(image, &lipGuid, (VOID **)&lip, image, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL);
 
   if(EFI_ERROR(status)) {
-    error(u"ERROR: %x; Could not open Loaded Image protocol\r\n", status);
+    error(status, u"Could not open Loaded Image protocol\r\n");
     goto done;
   }
 
@@ -1145,7 +1147,7 @@ EFI_STATUS getDiskImageMediaID(UINT32 *mediaID) {
   EFI_BLOCK_IO_PROTOCOL *bip = NULL;
   status = bs->OpenProtocol(lip->DeviceHandle, &bipGuid, (VOID **)&bip, image, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL);
   if(EFI_ERROR(status)) {
-    error(u"ERROR: %x; Could not open Block IO Protocol for this loaded image.\r\n", status);
+    error(status, u"Could not open Block IO Protocol for this loaded image.\r\n");
     goto done;
   }
 
@@ -1172,14 +1174,14 @@ EFI_STATUS printBlockIoPartitions(void) {
   UINT32 thisImageMediaId = 0;
   status = getDiskImageMediaID(&thisImageMediaId);
   if(EFI_ERROR(status)) {
-    error(u"ERROR: %x; Could not get disk image media ID.\r\n", status);
+    error(status, u"Could not get disk image media ID.\r\n");
     return status;
   }
 
   // Loop through and print all partition info found
   status = bs->LocateHandleBuffer(ByProtocol, &bipGuid, NULL, &numHandles, &handleBuffer);
   if(EFI_ERROR(status)) {
-    error(u"Error: %x; Could not locate Block IO Protocols.\r\n", status);
+    error(status, u"Could not locate Block IO Protocols.\r\n");
     return status;
   }
   
@@ -1187,7 +1189,7 @@ EFI_STATUS printBlockIoPartitions(void) {
   for(UINTN i = 0; i < numHandles; i++){
     status = bs->OpenProtocol(handleBuffer[i], &bipGuid, (VOID **)&bip, image, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL);
     if(EFI_ERROR(status)) {
-      error(u"Error: %x; Could not open any Block IO protocol on handle %u\r\n", status, i);
+      error(status, u"Could not open any Block IO protocol on handle %u\r\n", i);
       continue;
     }
 
@@ -1231,7 +1233,7 @@ EFI_STATUS printBlockIoPartitions(void) {
       EFI_PARTITION_INFO_PROTOCOL *pip = NULL;
       status = bs->OpenProtocol(handleBuffer[i], &pipGuid, (VOID **)&pip, image, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL);
       if(EFI_ERROR(status)) {
-        error(u"\r\nError: %x; Could not open partition info protocol on handle %u.\r\n", status, i);
+        error(status, u"\r\nCould not open partition info protocol on handle %u.\r\n", i);
       } else {
         if      (pip->Type == PARTITION_TYPE_OTHER )  printf(u"<Other type>\r\n");
         else if (pip->Type == PARTITION_TYPE_MBR)     printf(u"<MBR>\r\n");
@@ -1272,7 +1274,7 @@ VOID *loadElf(VOID *elfBuffer, EFI_PHYSICAL_ADDRESS *kernelBuffer, UINTN *kernel
 
   // Only allow PIE Files
   if(ehdr->e_type != ET_DYN) {
-    error(u"ERROR: ELF file is not a PIE file, only ET_DYN/0x03 type is allowed.\r\n");
+    error(0, u"ELF file is not a PIE file, only ET_DYN/0x03 type is allowed.\r\n");
     return NULL;
   }
 
@@ -1322,7 +1324,7 @@ VOID *loadElf(VOID *elfBuffer, EFI_PHYSICAL_ADDRESS *kernelBuffer, UINTN *kernel
   // May want to switch this for alloc a kernel to use AllocateAddress to put the buffer start at a specific address e.g. in higher half memory
   status = bs->AllocatePages(AllocateAnyPages, EfiLoaderCode, pagesNeeded, &programBuffer);
   if(EFI_ERROR(status)) {
-    error(u"ERROR: %x; Could not allocate memory for ELF program headers.\r\n", status);
+    error(status, u"Could not allocate memory for ELF program headers.\r\n");
     return NULL;
   }
 
@@ -1379,12 +1381,12 @@ VOID *loadPe(VOID *peBuffer, EFI_PHYSICAL_ADDRESS *kernelBuffer, UINTN *kernelSi
 
   // Validate some data
   if(coffHeader->Machine != IMAGE_FILE_MACHINE_AMD64) {
-    error(u"ERROR: PE file is not a 64-bit file, only AMD64/0x8664 type is allowed.\r\n");
+    error(0, u"PE file is not a 64-bit file, only AMD64/0x8664 type is allowed.\r\n");
     return NULL;
   }
 
   if(!(coffHeader->Characteristics & IMAGE_FILE_EXECUTABLE_IMAGE)) {
-    error(u"ERROR: File is not an executable.\r\n");
+    error(0, u"File is not an executable.\r\n");
     return NULL;
   }
 
@@ -1406,12 +1408,12 @@ VOID *loadPe(VOID *peBuffer, EFI_PHYSICAL_ADDRESS *kernelBuffer, UINTN *kernelSi
 
   // Validate info
   if(optHeader->Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
-    error(u"ERROR: File not a PE32+ file.\r\n");
+    error(0, u"File not a PE32+ file.\r\n");
     return NULL;
   }
 
   if(!(optHeader->DllCharacteristics & IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE)) {
-    error(u"ERROR: File not a PIE.\r\n");
+    error(0, u"File not a PIE.\r\n");
     return NULL;
   }
 
@@ -1421,7 +1423,7 @@ VOID *loadPe(VOID *peBuffer, EFI_PHYSICAL_ADDRESS *kernelBuffer, UINTN *kernelSi
   UINTN pagesNeeded = (optHeader->SizeOfImage + (PAGE_SIZE-1)) / PAGE_SIZE;
   status = bs->AllocatePages(AllocateAnyPages, EfiLoaderCode, pagesNeeded, &progBuffer);
   if(EFI_ERROR(status)) {
-    error(u"ERROR: %x; Could not allocate memory for PE file.\r\n", status);
+    error(status, u"Could not allocate memory for PE file.\r\n");
     return NULL;
   }
 
@@ -1489,7 +1491,7 @@ EFI_STATUS getMemoryMap(MemoryMapInfo *mMap) {
   );
 
   if(EFI_ERROR(status) && status != EFI_BUFFER_TOO_SMALL) {
-    error(u"ERROR: %x; Could not get initial memory map size\r\n", status);
+    error(status, u"Could not get initial memory map size\r\n");
     return status;
   }
 
@@ -1497,7 +1499,7 @@ EFI_STATUS getMemoryMap(MemoryMapInfo *mMap) {
   mMap->size += mMap->descriptorSize * 2; // Allocate enough space for an additional memory descriptor or 2 in the map due to this allocation itself.
   status = bs->AllocatePool(EfiLoaderData, mMap->size ,(VOID **)&mMap->map);
   if(EFI_ERROR(status)) {
-    error(u"ERROR: %x; Could not allocate buffer for memory map size\r\n", status);
+    error(status, u"Could not allocate buffer for memory map size\r\n");
     return status;
   }
 
@@ -1511,7 +1513,7 @@ EFI_STATUS getMemoryMap(MemoryMapInfo *mMap) {
   );
 
   if(EFI_ERROR(status) && status != EFI_BUFFER_TOO_SMALL) {
-    error(u"ERROR: %x; Could not get UEFI memory map!\r\n", status);
+    error(status, u"Could not get UEFI memory map!\r\n");
     return status;
   }
 
@@ -1595,29 +1597,27 @@ VOID *getConfigTableByGuid(EFI_GUID guid) {
 // =================
 // Print ACPI Table header
 // =================
-EFI_STATUS printAcpiTableHeader(ACPI_TABLE_HEADER header) {
+void printAcpiTableHeader(ACPI_TABLE_HEADER header) {
   printf(
-    u"Signature: %c%c%c%c\r\n"
+    u"Signature: %.4hhs\r\n"
     u"Length: %u\r\n"
-    u"Revision: %u\r\n"
+    u"Revision: %#x\r\n"
     u"Checksum: %u\r\n"
-    u"OEMID: %c%c%c%c%c%c\r\n"
-    u"OEM Table ID: %c%c%c%c%c%c%c%c\r\n"
-    u"OEM Revision: %u\r\n"
-    u"Creator ID: %x\r\n"
-    u"Creator Revision: %x\r\n",
-    header.signature[0], header.signature[1], header.signature[2], header.signature[3],
+    u"OEMID: %.6hhs\r\n"
+    u"OEM Table ID: %.8hhs\r\n"
+    u"OEM Revision: %#x\r\n"
+    u"Creator ID: %#x\r\n"
+    u"Creator Revision: %#x\r\n",
+    &header.signature[0],
     (UINTN)header.length,
     (UINTN)header.revision,
     (UINTN)header.checksum,
-    (UINTN)header.OEMID[0], (UINTN)header.OEMID[1], (UINTN)header.OEMID[2], (UINTN)header.OEMID[3], (UINTN)header.OEMID[4], (UINTN)header.OEMID[5], 
-    (UINTN)header.OEMTableID[0], (UINTN)header.OEMTableID[1], (UINTN)header.OEMTableID[2], (UINTN)header.OEMTableID[3], (UINTN)header.OEMTableID[4], (UINTN)header.OEMTableID[5], (UINTN)header.OEMTableID[6], (UINTN)header.OEMTableID[7],
+    &header.OEMID[0],
+    &header.OEMTableID[0],
     (UINTN)header.OEMRevision,
     (UINTN)header.creatorID,
     (UINTN)header.creatorRevision
   );
-
-  return EFI_SUCCESS;
 }
 
 // =================
@@ -1669,13 +1669,13 @@ EFI_STATUS printAcpiTables(void) {
     acpiGuid = (EFI_GUID)ACPI_TABLE_GUID;
     rsdpPtr = getConfigTableByGuid(acpiGuid);
     if(!rsdpPtr) {
-      error(u"ERROR: Could not find ACPI Configuration Table\r\n");
+      error(0, u"Could not find ACPI Configuration Table\r\n");
       return 1;
     } else {
-      printf(u"ACPI 1.0 Table found at %x\r\n\r\n", rsdpPtr);
+      printf(u"ACPI 1.0 Table found at %#x\r\n\r\n", rsdpPtr);
     }
   } else {
-    printf(u"ACPI 2.0+ Table found at %x\r\n\r\n", rsdpPtr);\
+    printf(u"ACPI 2.0+ Table found at %#x\r\n\r\n", rsdpPtr);\
     acpi2 = true;
   }
 
@@ -1684,16 +1684,16 @@ EFI_STATUS printAcpiTables(void) {
   if(acpi2) {
     printf(
       u"RSDP:\r\n"
-      u"Signature: %c%c%c%c%c%c%c%c\r\n"
+      u"Signature: %.8hhs\r\n"
       u"Checksum: %u\r\n"
-      u"OEMID: %c%c%c%c%c%c\r\n"
+      u"OEMID: %.6hhs\r\n"
       u"RSDT Address: %x\r\n"
       u"Length: %u\r\n"
       u"XSDT Address: %x\r\n"
       u"Extended Checksum: %u\r\n",
-      rsdp[0], rsdp[1], rsdp[2], rsdp[3], rsdp[4], rsdp[5], rsdp[6], rsdp[7],
+      &rsdp[0],
       (UINTN)rsdp[8],
-      rsdp[9], rsdp[10], rsdp[11], rsdp[12], rsdp[13], rsdp[14],
+      &rsdp[9],
       *(UINT32 *)&rsdp[16],
       *(UINT32 *)&rsdp[20],
       *(UINT64 *)&rsdp[24],
@@ -1702,13 +1702,13 @@ EFI_STATUS printAcpiTables(void) {
   } else {
     printf(
       u"RSDP:\r\n"
-      u"Signature: %c%c%c%c%c%c%c%c\r\n"
+      u"Signature: %.8hhs\r\n"
       u"Checksum: %u\r\n"
-      u"OEMID: %c%c%c%c%c%c\r\n"
+      u"OEMID: %.6hhs\r\n"
       u"RSDT Address: %x\r\n",
-      rsdp[0], rsdp[1], rsdp[2], rsdp[3], rsdp[4], rsdp[5], rsdp[6], rsdp[7],
+      &rsdp[0],
       (UINTN)rsdp[8],
-      rsdp[9], rsdp[10], rsdp[11], rsdp[12], rsdp[13], rsdp[14],
+      &rsdp[9],
       *(UINT32 *)&rsdp[16]
     );
   }
@@ -1772,7 +1772,7 @@ void *allocateMemoryMapPages(MemoryMapInfo *mMap, UINTN pages) {
     }
     if(i >= mMap->size / mMap->descriptorSize ) {
       // Ran out of descriptiros to check in memory map
-      error(u"ERROR: Could not find any memory to allocate pages for.\r\n");
+      error(0, u"Could not find any memory to allocate pages for.\r\n");
       return NULL;
     }
   }
@@ -1882,7 +1882,7 @@ void setRuntimeAddrMap(MemoryMapInfo *mMap){
   UINTN runtimeMemMapPages = (runtimeDescriptors * mMap->descriptorSize) + ((PAGE_SIZE-1) / PAGE_SIZE);
   EFI_MEMORY_DESCRIPTOR *runtimeMemMap = allocateMemoryMapPages(mMap, runtimeMemMapPages);
   if (!runtimeMemMap) {
-    error(u"ERROR: Could not allocate runtime descriptors memory map.\r\n");
+    error(0, u"Could not allocate runtime descriptors memory map.\r\n");
     return;
   }
 
@@ -1907,7 +1907,7 @@ void setRuntimeAddrMap(MemoryMapInfo *mMap){
   // Set new virtual addresses for runtime memory via SetVirtualAddressMap()
   EFI_STATUS status = rs->SetVirtualAddressMap(runtimeMemMapSize, mMap->descriptorSize, mMap->descriptorVersion, runtimeMemMap);
   if(EFI_ERROR(status)) {
-    error(u"ERROR: SetVirtualAddressMap()\r\n");
+    error(0, u"SetVirtualAddressMap()\r\n");
   }
 }
 
@@ -1930,14 +1930,14 @@ EFI_STATUS loadKernel(void) {
   UINTN bufferSize = 0;
   fileBuffer = readEspFileToBuffer(fileName, &bufferSize);
   if(fileBuffer == NULL) {
-    error(u"ERROR: Could not find or read %s from data partition to buffer.\r\n", fileName);
+    error(0, u"Could not find or read %s from data partition to buffer.\r\n", fileName);
     goto exit;
   }
 
   // Search for file based on file name
   strPos = substr(fileBuffer, "kernel");
   if(!strPos) {
-    error(u"ERROR: Could not find kernel file in data partition.\r\n");
+    error(0, u"Could not find kernel file in data partition.\r\n");
     goto cleanup;
   }
 
@@ -1946,7 +1946,7 @@ EFI_STATUS loadKernel(void) {
   // Parse data from TEST.TXT file to get disk LBA and file size
   strPos = substr(fileBuffer, "FILE_SIZE=");
   if(!strPos) {
-    error(u"ERROR: Could not find file size for file %s.\r\n", fileName);
+    error(0, u"Could not find file size for file %s.\r\n", fileName);
     goto cleanup;
   }
 
@@ -1959,7 +1959,7 @@ EFI_STATUS loadKernel(void) {
 
   strPos = substr(fileBuffer, "DISK_LBA=");
   if(!strPos) {
-    error(u"ERROR: Could not find disk lba value from buffer %s.\r\n", fileName);
+    error(0, u"Could not find disk lba value from buffer %s.\r\n", fileName);
     goto cleanup;
   }
 
@@ -1977,7 +1977,7 @@ EFI_STATUS loadKernel(void) {
   status = getDiskImageMediaID(&imageMediaID);
 
   if (EFI_ERROR(status)) {
-    error(u"ERROR: %x; Could not find or get MediaID value for disk image", status);
+    error(status, u"Could not find or get MediaID value for disk image");
     bs->FreePool(fileBuffer);
     goto exit;
   }
@@ -1985,7 +1985,7 @@ EFI_STATUS loadKernel(void) {
   // Read disk lbas for file into buffer
   diskBuffer = (VOID *)readDiskLbasToBuffer(diskLba, fileSize, imageMediaID, true);
   if(!diskBuffer) {
-    error(u"ERROR: Could not find or read data partition file to buffer.\r\n");
+    error(0, u"Could not find or read data partition file to buffer.\r\n");
     bs->FreePool(diskBuffer); // Free memory allocated for disk LBA buffer
     goto exit;
   }
@@ -1996,7 +1996,7 @@ EFI_STATUS loadKernel(void) {
 
   status = bs->LocateProtocol(&gopGuid, NULL, (VOID **)&gop);
   if(EFI_ERROR(status)) {
-    error(u"ERROR: %x; Could not locate GOP for kernel parameters.\r\n", status);
+    error(status, u"Could not locate GOP for kernel parameters.\r\n");
     return status;
   }
   
@@ -2059,7 +2059,7 @@ EFI_STATUS loadKernel(void) {
 
   status = bs->AllocatePool(EfiLoaderData, sizeof(MemoryMapInfo), (VOID **)&kparams.mMap);
   if(EFI_ERROR(status)) {
-    error(u"ERROR: %x; Could not allocate MemoryMapInfo struct\r\n", status);
+    error(status, u"Could not allocate MemoryMapInfo struct\r\n");
     goto cleanup;
   }
 
@@ -2074,7 +2074,7 @@ EFI_STATUS loadKernel(void) {
     retries++;
   }
   if (retries == MAX_RETRIES) {
-    error(u"ERROR: Could not exit Boot Services!\r\n");
+    error(0, u"Could not exit Boot Services!\r\n");
     goto cleanup;
   }
 

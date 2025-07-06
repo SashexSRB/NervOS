@@ -102,30 +102,31 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
       // Process input
       switch(key.ScanCode) {
         case SCANCODE_UP_ARROW:
-          if(currentRow-1 >= minRow) {
-            // de-highlight current row,
-            cout->SetAttribute(cout, EFI_TEXT_ATTR(DEFAULT_FG_COLOR, DEFAULT_BG_COLOR));
-            printf(u"%s\r", menuChoices[currentRow]);
+          // de-highlight current row,
+          cout->SetAttribute(cout, EFI_TEXT_ATTR(DEFAULT_FG_COLOR, DEFAULT_BG_COLOR));
+          printf(u"%s\r", menuChoices[currentRow]);
+          
+          if(currentRow-1 >= minRow) currentRow--; // Go up one row
+          else currentRow = maxRow; // Wrap around to bottom of the menu
 
-            currentRow--;
-            cout->SetCursorPosition(cout, 0, currentRow);
-            cout->SetAttribute(cout, EFI_TEXT_ATTR(HL_FG_COLOR, HL_BG_COLOR));
-            printf(u"%s\r", menuChoices[currentRow]);
-            cout->SetAttribute(cout, EFI_TEXT_ATTR(DEFAULT_FG_COLOR, DEFAULT_BG_COLOR));
-          }
+          cout->SetCursorPosition(cout, 0, currentRow);
+          cout->SetAttribute(cout, EFI_TEXT_ATTR(HL_FG_COLOR, HL_BG_COLOR));
+          printf(u"%s\r", menuChoices[currentRow]);
+          cout->SetAttribute(cout, EFI_TEXT_ATTR(DEFAULT_FG_COLOR, DEFAULT_BG_COLOR));
         break;
         case SCANCODE_DOWN_ARROW:
-          if(currentRow+1 <= maxRow) {
-            // de-highlight current row,
-            cout->SetAttribute(cout, EFI_TEXT_ATTR(DEFAULT_FG_COLOR, DEFAULT_BG_COLOR));
-            printf(u"%s\r", menuChoices[currentRow]);
+          // de-highlight current row,
+          cout->SetAttribute(cout, EFI_TEXT_ATTR(DEFAULT_FG_COLOR, DEFAULT_BG_COLOR));
+          printf(u"%s\r", menuChoices[currentRow]);
 
-            currentRow++;
-            cout->SetCursorPosition(cout, 0, currentRow);
-            cout->SetAttribute(cout, EFI_TEXT_ATTR(HL_FG_COLOR, HL_BG_COLOR));
-            printf(u"%s\r", menuChoices[currentRow]);
-            cout->SetAttribute(cout, EFI_TEXT_ATTR(DEFAULT_FG_COLOR, DEFAULT_BG_COLOR));
-          }
+          if(currentRow+1 <= maxRow) currentRow++; // Go down one row
+          else currentRow = minRow; // Wrap around to top of the menu
+
+          cout->SetCursorPosition(cout, 0, currentRow);
+          cout->SetAttribute(cout, EFI_TEXT_ATTR(HL_FG_COLOR, HL_BG_COLOR));
+          printf(u"%s\r", menuChoices[currentRow]);
+          cout->SetAttribute(cout, EFI_TEXT_ATTR(DEFAULT_FG_COLOR, DEFAULT_BG_COLOR));
+          
         break;
         case SCANCODE_ESC:
           // Close Timer Event
@@ -138,7 +139,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
           if(key.UnicodeChar == u'\r') {
             EFI_STATUS returnStatus = menuFuncs[currentRow]();
             if(EFI_ERROR(returnStatus)) {
-              error(u"ERROR: %x\r\n; Press any key to go back...", returnStatus);
+              error(returnStatus, u"\r\nPress any key to go back...");
             }
             gettingInput = false; // will leave input loop and reprint main menu
           }
