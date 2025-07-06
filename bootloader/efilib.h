@@ -279,6 +279,59 @@ EFI_RUNTIME_SERVICES *rs; // Runtime Services
 EFI_HANDLE image = NULL; // Image handle
 EFI_EVENT timerEvent = NULL; // Timer event for printing date/time
 
+// -----------------
+//  Global macros
+// -----------------
+#define ARR_SIZE(x) (sizeof (x) / sizeof (x)[0])
+#define BOOL_TO_YN(b) ((b) ? u"Yes" : u"No")
+
+// -----------------
+//  Global constants
+// -----------------
+#define DEFAULT_FG_COLOR EFI_RED
+#define DEFAULT_BG_COLOR EFI_BLACK
+#define HL_FG_COLOR EFI_BLACK
+#define HL_BG_COLOR EFI_LIGHTGRAY
+#define px_LGRAY { 0xEE, 0xEE, 0xEE, 0x00 }
+#define px_BLACK { 0x00, 0x00, 0x00, 0x00 }
+
+#define PHYSICAL_PAGE_ADDR_MASK 0x000FFFFFFFFFF000 // 52 bits physical addr limit, lowest 12 are for flags only
+#define PAGE_SIZE 4096
+
+#define IMAGE_FILE_MACHINE_AMD64 0x8664
+#define IMAGE_NT_OPTIONAL_HDR64_MAGIC 0x20B // PE32+ magic number
+
+// Kernel start address in higher memory (64bit)
+#define KERNEL_START_ADDR 0xFFFFFFFF80000000
+
+typedef struct {
+  UINT64 entries[512];
+} pageTable;
+
+// Page flags: bits 11-0
+enum {
+  PRESENT = (1 << 0),
+  RW =(1 << 1),
+  USER = (1 << 2)
+};
+
+// -----------------
+// Mouse drawing stuff
+// -----------------
+// Mouse cursor buffer 8x8
+EFI_GRAPHICS_OUTPUT_BLT_PIXEL cursorBuffer[] = {
+    px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, // Line 1
+    px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, // Line 2
+    px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, px_BLACK, px_BLACK, px_BLACK, px_BLACK, // Line 3
+    px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, px_BLACK, px_BLACK, px_BLACK, // Line 4
+    px_LGRAY, px_LGRAY, px_BLACK, px_LGRAY, px_LGRAY, px_LGRAY, px_BLACK, px_BLACK, // Line 5
+    px_LGRAY, px_LGRAY, px_BLACK, px_BLACK, px_LGRAY, px_LGRAY, px_LGRAY, px_BLACK, // Line 6
+    px_LGRAY, px_LGRAY, px_BLACK, px_BLACK, px_BLACK, px_LGRAY, px_LGRAY, px_LGRAY, // Line 7
+    px_LGRAY, px_LGRAY, px_BLACK, px_BLACK, px_BLACK, px_BLACK, px_LGRAY, px_LGRAY, // Line 8
+};
+// Buffer to save FB data at cursor position
+EFI_GRAPHICS_OUTPUT_BLT_PIXEL savedBuffer[8*8] = {0};
+
 // =================
 // memset for compling with clang/gcc (set len bytes of dst memory with int c) UNCOMMENT FOR CLANG
 // =================

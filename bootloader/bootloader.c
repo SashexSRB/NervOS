@@ -44,6 +44,9 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     // Get current text mode ColsxRows values
     UINTN cols = 0, rows = 0;
     cout->QueryMode(cout, cout->Mode->Mode, &cols, &rows);
+    // Set global rows/cols values
+    textRows = rows, 
+    textCols = cols;
 
     // Timer context will be text mode screen boundds
     typedef struct {

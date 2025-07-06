@@ -2,42 +2,6 @@
 #include "efi.h"
 #include "efilib.h"
 
-// -----------------
-//  Global macros
-// -----------------
-#define ARR_SIZE(x) (sizeof (x) / sizeof (x)[0])
-#define BOOL_TO_YN(b) ((b) ? u"Yes" : u"No")
-
-// -----------------
-//  Global constants
-// -----------------
-#define DEFAULT_FG_COLOR EFI_RED
-#define DEFAULT_BG_COLOR EFI_BLACK
-#define HL_FG_COLOR EFI_BLACK
-#define HL_BG_COLOR EFI_LIGHTGRAY
-#define px_LGRAY { 0xEE, 0xEE, 0xEE, 0x00 }
-#define px_BLACK { 0x00, 0x00, 0x00, 0x00 }
-
-#define PHYSICAL_PAGE_ADDR_MASK 0x000FFFFFFFFFF000 // 52 bits physical addr limit, lowest 12 are for flags only
-#define PAGE_SIZE 4096
-
-#define IMAGE_FILE_MACHINE_AMD64 0x8664
-#define IMAGE_NT_OPTIONAL_HDR64_MAGIC 0x20B // PE32+ magic number
-
-// Kernel start address in higher memory (64bit)
-#define KERNEL_START_ADDR 0xFFFFFFFF80000000
-
-typedef struct {
-  UINT64 entries[512];
-} pageTable;
-
-// Page flags: bits 11-0
-enum {
-  PRESENT = (1 << 0),
-  RW =(1 << 1),
-  USER = (1 << 2)
-};
-
 // =================
 // Set global vars
 // =================
@@ -53,24 +17,9 @@ void initGlbVars(EFI_HANDLE handle, EFI_SYSTEM_TABLE *systable) {
   image = handle;
 }
 
-// -----------------
-// Mouse drawing stuff
-// -----------------
-// Mouse cursor buffer 8x8
-EFI_GRAPHICS_OUTPUT_BLT_PIXEL cursorBuffer[] = {
-    px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, // Line 1
-    px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, // Line 2
-    px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, px_BLACK, px_BLACK, px_BLACK, px_BLACK, // Line 3
-    px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, px_LGRAY, px_BLACK, px_BLACK, px_BLACK, // Line 4
-    px_LGRAY, px_LGRAY, px_BLACK, px_LGRAY, px_LGRAY, px_LGRAY, px_BLACK, px_BLACK, // Line 5
-    px_LGRAY, px_LGRAY, px_BLACK, px_BLACK, px_LGRAY, px_LGRAY, px_LGRAY, px_BLACK, // Line 6
-    px_LGRAY, px_LGRAY, px_BLACK, px_BLACK, px_BLACK, px_LGRAY, px_LGRAY, px_LGRAY, // Line 7
-    px_LGRAY, px_LGRAY, px_BLACK, px_BLACK, px_BLACK, px_BLACK, px_LGRAY, px_LGRAY, // Line 8
-};
-// Buffer to save FB data at cursor position
-EFI_GRAPHICS_OUTPUT_BLT_PIXEL savedBuffer[8*8] = {0};
-
 pageTable *pml4 = NULL; // Top level 4 page level for x86-64 long mode paging
+
+INT32 textRows = 0, textCols = 0;
 
 // =================
 // Set text mode
@@ -223,6 +172,13 @@ EFI_STATUS setTextMode(void) {
         default:
           if(key.UnicodeChar == u'\r' && textModes[modeIdx].cols != 0) {
             cout->SetMode(cout, modeIdx);
+            cout->QueryMode(cout, modeIdx, (UINTN *)&textModes[modeIdx].rows, (UINTN *)&textModes[modeIdx].rows);
+
+            textRows = textModes[modeIdx].rows;
+            textCols = textModes[modeIdx].rows;
+
+            cout->ClearScreen(cout);
+
             gettingInput = false;
             modeIdx = 0;
           }
@@ -1536,9 +1492,9 @@ EFI_STATUS printMemoryMap(void) {
   printf(
     u"Memory Map Size: %u, # Descriptor Size: %u\r\n" 
     u"Number of Descriptors: %u, Key: %x\r\n",
-    mMap.size, mMap.descriptorSize, // 1488th line of code?? hitler reference? :D
+    mMap.size, mMap.descriptorSize, 
     mMap.size / mMap.descriptorSize, mMap.key
-  );
+  ); // 1488th line of code?? hitler reference? :D
 
   UINTN usableBytes = 0; // "Usable" memory for an OS or similar, not firmware/device reserved
   for (UINTN i = 0; i < mMap.size / mMap.descriptorSize; i++) {
@@ -1565,9 +1521,12 @@ EFI_STATUS printMemoryMap(void) {
       usableBytes += desc->NumberOfPages * 4096;
     }
 
-    // Pause every 20 lines
-    if (i > 0 && i % 20 == 0) getKey();
-    
+    // Pause pause if bottom of screeen reached
+    if(cout->Mode->CursorRow >= textRows-2) {
+      printf(u"Press any key to continue...\r\n");
+      getKey();
+      cout->ClearScreen(cout);
+    }
   }
   printf(
     u"\r\nUsable memory: %u / %u MiB / %u GiB\r\n",
