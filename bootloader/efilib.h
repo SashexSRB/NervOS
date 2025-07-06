@@ -754,15 +754,16 @@ bool printf(CHAR16 *fmt, ...) {
 // Print error message and get a key from user, so they can acknowledge the error and it doesnt go on immediately
 // =================
 bool error(char *file, int line, const char *func, EFI_STATUS status, CHAR16 *fmt, ...) {
-  printf(u"\r\nERROR: FILE %s, LINE %d, FUNCTION %s\r\n", file, line, func);
+  printfCout = cerr;
+
+  printf(u"\r\nERROR: FILE %hhs, LINE %d, FUNCTION %hhs\r\n", file, line, func);
 
   // Print error code & string if applicable
-  if(status > 0 && status - TOP_BIT < MAX_EFI_ERROR) printf(u"\r\nSTATUS: %x (%s)\r\n", status, EFI_ERROR_STRINGS[status - TOP_BIT]);
+  if(status > 0 && status - TOP_BIT < MAX_EFI_ERROR) printf(u"STATUS: %x (%s)\r\n", status, EFI_ERROR_STRINGS[status - TOP_BIT]);
   
-  printfCout = cerr;
   va_list args;
   va_start(args, fmt);
-  bool result = printf(fmt, args); // Printf the error message to stderr
+  bool result = vprintf(fmt, args); // Printf the error message to stderr
 
   printfCout = cout; // Reset Priintf() to stdout
 
@@ -772,6 +773,46 @@ bool error(char *file, int line, const char *func, EFI_STATUS status, CHAR16 *fm
 }
 
 #define error(...) error(__FILE__, __LINE__, __func__, __VA_ARGS__);
+
+// =================
+// Get a number from the user with a getKey loop
+// =================
+BOOLEAN getNumber(INTN *number) {
+  EFI_INPUT_KEY key = {0};
+  if (!number) return false; // Passed in NULL pointer
+  *number = 0;
+  do {
+    key = getKey();
+    if(isDigitC16(key.UnicodeChar)) {
+      *number = (*number * 10) + (key.UnicodeChar - u'0');
+      printf(u"%c", key.UnicodeChar);
+    }
+  } while (key.UnicodeChar != u'\r');
+  return TRUE;
+}
+
+// =================
+// Get a hex number from user with a getKey loop
+// =================
+BOOLEAN getHex(UINTN *number) {
+  EFI_INPUT_KEY key = {0};
+  if (!number) return false; // Passed in NULL pointer
+  *number = 0;
+  do {
+    key = getKey();
+    if(isDigitC16(key.UnicodeChar)) {
+      *number = (*number * 16) + (key.UnicodeChar - u'0');
+      printf(u"%c", key.UnicodeChar);
+    } else if (key.UnicodeChar >= u'a' && key.UnicodeChar <= u'f') {
+      *number = (*number * 16) + (key.UnicodeChar - u'a' + 10);
+      printf(u"%c", key.UnicodeChar);
+    } else if (key.UnicodeChar >= u'A' && key.UnicodeChar <= u'F') {
+      *number = (*number * 16) + (key.UnicodeChar - u'A' + 10);
+      printf(u"%c", key.UnicodeChar);
+    } 
+  } while (key.UnicodeChar != u'\r');
+  return TRUE;
+}
 
 // =================
 // Print a GUID value
