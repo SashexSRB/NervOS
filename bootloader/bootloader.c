@@ -13,6 +13,19 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
   // Disable watchdog timer
   bs->SetWatchdogTimer(0, 0x10000, 0, NULL);
 
+  EFI_FILE_PROTOCOL *root = espRootDir();
+  if(root) {
+    EFI_STATUS status = EFI_SUCCESS;
+    CHAR16 *path = u"\\EFI\\BOOT\\INSTALL.DAT";
+    EFI_FILE_PROTOCOL *file = NULL;
+    status = root->Open(root, &file, path, EFI_FILE_MODE_READ, 0);
+    autoloadKernel = !EFI_ERROR(status);
+    if(file) file->Close(file);
+    if(root) root->Close(root);
+  }
+
+  if(autoloadKernel) loadKernel(); // Load kernel, should not return!
+
   const CHAR16 *menuChoices[] = {
     u"Load Kernel",
     u"Set Text Mode",

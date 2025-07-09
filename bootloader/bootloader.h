@@ -21,6 +21,8 @@ pageTable *pml4 = NULL; // Top level 4 page level for x86-64 long mode paging
 
 INT32 textRows = 0, textCols = 0;
 
+bool autoloadKernel = false;
+
 // =================
 // Set text mode
 // =================
@@ -189,6 +191,38 @@ EFI_STATUS setTextMode(void) {
   return EFI_SUCCESS;
 }
 
+// ================
+// Get EFI_FILE_PROTOCOL to root directory of ESP
+// ================
+EFI_FILE_PROTOCOL *espRootDir(VOID) {
+  EFI_FILE_PROTOCOL *root = NULL;
+  EFI_LOADED_IMAGE_PROTOCOL *lip = NULL;
+  EFI_GUID lipGuid = EFI_LOADED_IMAGE_PROTOCOL_GUID;
+  EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *sfsp;
+  EFI_GUID sfspGuid = EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID;
+
+  EFI_STATUS status = EFI_SUCCESS;
+  status = bs->OpenProtocol(image, &lipGuid, (VOID **)&lip, image, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL);
+  if(EFI_ERROR(status)) {
+    error(status, u"Could not open Loaded Image Protocol\r\n");
+    goto done;
+  }
+
+  status = bs->OpenProtocol(lip->DeviceHandle, &sfspGuid, (VOID **)&sfsp, image, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL);
+  if(EFI_ERROR(status)) {
+    error(status, u"Could not open Simple File System Protocol\r\n");
+    goto done;
+  }
+
+  status = sfsp->OpenVolume(sfsp, &root);
+  if(EFI_ERROR(status)) {
+    error(status, u"Could not Open Volume for root directory\r\n");
+  }
+
+  done:
+  return root;
+}
+
 // =================
 // Read a fully qualified file path in the ESP into an output buffer.
 // File path must start with root '\', escaped as needed by the caller with '\\'.
@@ -198,42 +232,24 @@ EFI_STATUS setTextMode(void) {
 // =================
 VOID *readEspFileToBuffer(CHAR16 *path, UINTN *fileSize) {
   VOID *fileBuffer = NULL;
+  EFI_FILE_PROTOCOL *root = NULL, *file = NULL;
   EFI_STATUS status;
 
-  // Get loaded image protocol first to grab device handle to use simple file system protocol on
-  EFI_GUID lipGuid = EFI_LOADED_IMAGE_PROTOCOL_GUID;
-  EFI_LOADED_IMAGE_PROTOCOL *lip = NULL;
-  status = bs->OpenProtocol(image, &lipGuid, (VOID **)&lip, image, NULL, EFI_OPEN_PROTOCOL_BY_HANDLE_PROTOCOL);
-  if(EFI_ERROR(status)) {
-    error(status, u"Could not open Loaded Image Protocol!\r\n");
-    goto cleanup;
-  }
+  *fileSize = 0;
 
-  // Get Simple File System Protocol for device handle for this loaded image, to open the root directory for the ESP.
-  EFI_GUID sfspGuid = EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID;
-  EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *sfsp = NULL;
-  status = bs->OpenProtocol(lip->DeviceHandle, &sfspGuid, (VOID **)&sfsp, image, NULL, EFI_OPEN_PROTOCOL_BY_HANDLE_PROTOCOL);
-  if(EFI_ERROR(status)) {
-    error(status, u"Could not open Simple FileSystem Protocol\r\n");
-    goto cleanup;
-  }
-
-  // Open the root directory via OpenVolume()
-  EFI_FILE_PROTOCOL *root = NULL;
-  status = sfsp->OpenVolume(sfsp, &root);
-  if(EFI_ERROR(status)) {
-    error(status, u"Could not open volume for root directory in ESP!\r\n");
+  root = espRootDir();
+  if(!root) {
+    error(0, u"Could not get root directory of ESP\r\n");
     goto cleanup;
   }
 
   // Open fle in input path
-  EFI_FILE_PROTOCOL *file = NULL;
   status = root->Open(root, &file, path, EFI_FILE_MODE_READ, 0);
   if(EFI_ERROR(status)) {
     error(status, u"Could not open file '%s' for reading!\r\n", path);
     goto cleanup;
   }
-  // Something is broken here
+  
   // Get info for file, to grab size
   EFI_FILE_INFO fileInfo;
   EFI_GUID fileInfoGuid = EFI_FILE_INFO_ID;
@@ -241,7 +257,7 @@ VOID *readEspFileToBuffer(CHAR16 *path, UINTN *fileSize) {
   status = file->GetInfo(file, &fileInfoGuid, &bufferSize, &fileInfo);
   if(EFI_ERROR(status)) {
     error(status, u"Could not get file info for '%s'!\r\n", path);
-    goto fileCleanup;
+    goto cleanup;
   }
 
   // Allocate buffer for file
@@ -249,33 +265,24 @@ VOID *readEspFileToBuffer(CHAR16 *path, UINTN *fileSize) {
   status = bs->AllocatePool(EfiLoaderData, bufferSize, &fileBuffer);
   if(EFI_ERROR(status) || bufferSize != fileInfo.FileSize) {
     error(status, u"Could not allocate memory for '%s'!\r\n", path);
-    goto fileCleanup;
+    goto cleanup;
   }
-
-  if(EFI_ERROR(status)) {
-    error(status, u"Could not get file info for file %s!\r\n", path);
-    goto fileCleanup;
-  } 
 
   // Read file into buffer
   status = file->Read(file, &bufferSize, fileBuffer);
   if(EFI_ERROR(status) || bufferSize != fileInfo.FileSize) {
     error(status, u"Could not read file '%s' into buffer!\r\n", path);
-    goto fileCleanup;
+    goto cleanup;
   }
   
   // Set output file size in buffer
   *fileSize = bufferSize;
   
-  fileCleanup:
-  // Close open file/dir pointers
-  root->Close(root);
-  file->Close(file);
-
   cleanup:
   // Close open protocols
-  bs->CloseProtocol(lip->DeviceHandle, &sfspGuid, image, NULL);
-  bs->CloseProtocol(image, &lipGuid, image, NULL);
+  if(file) file->Close(file);
+  if(root) root->Close(root);
+  
   return fileBuffer; // will return buffer with file data, or NULL if error
 }
 
@@ -2126,6 +2133,148 @@ EFI_STATUS changeBootVars(void) {
   return EFI_SUCCESS;
 }
 
+// =========================================================================
+// Check if a GOP mode exists for a given Horizontal & Vertical resolution 
+// =========================================================================
+EFI_STATUS checkGopMode(UINT32 *ret_mode, UINT32 xres, UINT32 yres) {
+    EFI_STATUS status = EFI_SUCCESS;
+
+    // Get GOP protocol via LocateProtocol()
+    EFI_GUID gop_guid = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID; 
+    EFI_GRAPHICS_OUTPUT_PROTOCOL *gop = NULL;
+    EFI_GRAPHICS_OUTPUT_MODE_INFORMATION *mode_info = NULL;
+    UINTN mode_info_size = sizeof *mode_info;
+
+    status = bs->LocateProtocol(&gop_guid, NULL, (VOID **)&gop);
+    if (EFI_ERROR(status)) {
+        error(status, u"Could not locate GOP.\r\n");
+        return status;
+    }
+
+    // Get current GOP mode information
+    status = gop->QueryMode(gop, gop->Mode->Mode, &mode_info_size, &mode_info);
+    if (EFI_ERROR(status)) {
+        error(status, u"Could not Query GOP Mode %u.\r\n", gop->Mode->Mode);
+        return status;
+    }
+
+    // Get first GOP mode with xres/yres values
+    UINT32 max_mode = gop->Mode->MaxMode;
+    UINT32 save_mode = 0;
+    bool found_mode = false;
+    for (UINT32 i = 0; i < max_mode; i++) {
+        status = gop->QueryMode(gop, i, &mode_info_size, &mode_info);
+        if (EFI_ERROR(status)) continue;
+
+        if (mode_info->PixelFormat == PixelBltOnly || 
+            mode_info->PixelFormat == PixelBitMask) 
+            continue;   // No linear framebuffer
+
+        if (mode_info->HorizontalResolution == xres && 
+            mode_info->VerticalResolution   == yres) {
+            save_mode = i;
+            found_mode = true;
+            break;
+        }
+    }
+
+    if (!found_mode)
+        status = EFI_UNSUPPORTED;
+    else {
+        status = gop->QueryMode(gop, save_mode, &mode_info_size, &mode_info);
+        if (EFI_ERROR(status)) {
+            error(status, u"Could not get GOP mode %u info.\r\n", save_mode);
+            return status;
+        }
+    }
+
+    *ret_mode = save_mode;
+    return status;
+}
+
+// ================
+// "install" this bootloader, by creating a new file marking it as installed. This file existing on boot will go on to load the kernel instead of the main menu
+// ================
+EFI_STATUS installToDisk(void) {
+  EFI_STATUS status = EFI_SUCCESS;
+
+  CHAR16 *path = u"\\EFI\\BOOT\\INSTALL.DAT";
+  printf(u"Install to disk by writing file '%s' (Y/N)?   ", path);
+
+  bool yes = false, no = false;
+  EFI_INPUT_KEY key = getKey();
+  while(key.UnicodeChar != u'\r' && key.ScanCode != SCANCODE_ESC) {
+    yes = no = false;
+    yes = (key.UnicodeChar == 'Y' || key.UnicodeChar == 'y');
+    no = (key.UnicodeChar == 'N' || key.UnicodeChar == 'n');
+    if(yes || no) printf(u"\b%c", key.UnicodeChar); // Overwrite character at same position
+    key = getKey();
+  }
+  printf(u"\r\n");
+
+  if(yes) {
+    EFI_FILE_PROTOCOL *root = espRootDir();
+    if(!root) {
+      error(0, u"Could not get ESP root directory.\r\n");
+      return EFI_UNSUPPORTED;
+    }
+
+    // Create new empty file, flags must be Create Read Write
+    EFI_FILE_PROTOCOL *file = NULL;
+    status = root->Open(root, &file, path, EFI_FILE_MODE_CREATE | EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE, 0);
+    if(EFI_ERROR(status)) {
+      error(status, u"Could not create new file '%s'", path);
+      goto cleanup;
+    }
+
+    UINTN fbWidth = 0, fbHeight = 0;
+    UINT32 modeNum = 0;
+    while(true) {
+      printf(u"Desired Framebuffer Width (number, default = 1920)? \r\n");
+      getNumber(&fbWidth);
+      if(fbWidth == 0) fbWidth = 1920;
+
+      printf(u"Desired Framebuffer Width (number, default = 1080)? \r\n");
+      getNumber(&fbHeight);
+      if(fbHeight == 0) fbHeight = 1080;
+
+      if(!EFI_ERROR(checkGopMode(&modeNum, fbWidth, fbHeight))) break;
+
+      printf(u"\r\nGOP Mode not found for WidthxHeight.\r\n");
+    }
+    // Write GOP mode & values to file
+    char buf[512];
+    sprintf(buf, 
+      "GOP_MODE=%u\r\n"
+      "XRES=%u\r\n"
+      "YRES=%u\r\n",
+      modeNum, fbWidth, fbHeight
+    );
+
+    UINTN bufSize = strLen(buf);
+    status = file->Write(file, &bufSize, buf);
+    if(EFI_ERROR(status)) {
+      error(status, u"Issue writing GOP info to file '%s'.\r\n", path);
+      goto cleanup;
+    }
+
+    printf(
+      u"\r\n\r\nFile '%s' written.\r\n"
+      u"Next boot will automatically load the kernel and not the main menu.\r\n"
+      u"Press any key to continue...\r\n",
+      path
+    );
+    getKey();
+
+
+    cleanup:
+    if(file) file->Close(file);
+    if(root) root->Close(root);
+
+  }
+  return status;
+}
+
 // =================
 // Write to another disk
 // =================
@@ -2135,6 +2284,7 @@ EFI_STATUS writeToAnotherDisk(void) {
   EFI_BLOCK_IO_PROTOCOL *bip;
   UINTN numHandles = 0;
   EFI_HANDLE *handleBuffer = NULL;
+  EFI_BLOCK_IO_PROTOCOL *diskImageBIO = NULL, *chosenDiskBIO = NULL; 
 
   cout->ClearScreen(cout);
 
@@ -2144,9 +2294,30 @@ EFI_STATUS writeToAnotherDisk(void) {
   UINT32 diskImageMediaID = 0;
   status = getDiskImageMediaID(&diskImageMediaID);
   if(EFI_ERROR(status)) {
-    error(0, u"Could not get Disk Image Media ID\r\n");
+    error(status, u"Could not get Disk Image Media ID\r\n");
     return status;
   }
+
+  // Get size of disk image from file
+  CHAR16 *fileName = u"\\EFI\\BOOT\\FILE.TXT";
+  UINTN bufSize = 0;
+  VOID *fileBuffer = NULL;
+  fileBuffer = readEspFileToBuffer(fileName, &bufSize);
+  if(!fileBuffer) {
+    error(0, u"Could not find or read file '%s' to buffer\r\n", fileName);
+    return 1;
+  }
+
+  char *strPos = substr(fileBuffer, "DISK_SIZE=");
+  if(!strPos) {
+    error(0, u"Could not find disk image size in FILE.TXT\r\n");
+    return 1;
+  }
+
+  strPos += strLen("DISK_SIZE=");
+  UINTN diskImageSize = atoi(strPos);
+
+  bs->FreePool(fileBuffer);
 
   // Loop through and print full disk block IO protocol media infos
   status = bs->LocateHandleBuffer(ByProtocol, &bipGuid, NULL, &numHandles, &handleBuffer);
@@ -2177,21 +2348,106 @@ EFI_STATUS writeToAnotherDisk(void) {
         lastMediaId, 
         (lastMediaId == diskImageMediaID ? u"(Disk Image)\r\n" : u"\r\n")
       );
+      if(lastMediaId == diskImageMediaID) {
+        diskImageBIO = bip;
+      }
     }
     
     UINTN size = (bip->Media->LastBlock+1) * bip->Media->BlockSize;
     printf(
-      u"Removable: %s, Block Size: %u, Last Block: %u\r\n"
-      u"Lowest Aligned LBA: %u, Size: %u/%u MiB/%u GiB\r\n\r\n",
+      u"Removable: %s, Size: %u/%u MiB/%u GiB\r\n\r\n",
       BOOL_TO_YN(bip->Media->RemovableMedia),
-      bip->Media->BlockSize,
-      bip->Media->LastBlock,
-      bip->Media->LowestAlignedLba,
       size, 
       size / (1024 * 1024), 
       size / (1024 * 1024 * 1024)
     );
+
+    if(bip->Media->MediaId == diskImageMediaID) {
+      printf(
+        u"Disk Image Size: %llu/%llu MiB/%llu GiB\r\n",
+        diskImageSize,
+        diskImageSize / (1024 * 1024),
+        diskImageSize / (1024 * 1024 * 1024)
+      );
+    }
+    printf(u"\r\n");
   }
+
+  // Take in a number from the user for the media to write the disk image to
+  printf(u"Input Media ID number to write to: ");
+  UINTN chosenMedia = 0;
+  getNumber(&chosenMedia);
+  printf(u"\r\n");
+
+  bool found = false;
+  for (UINTN i = 0; i < numHandles; i++) {
+    status = bs->OpenProtocol(handleBuffer[i], &bipGuid, (VOID **)&bip, image, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL);
+    if(EFI_ERROR(status)) {
+      error(status, u"Could not get any Block IO protocol on handle %u\r\n", i);
+      continue;
+    }
+
+    if(bip->Media->MediaId == chosenMedia) {
+      chosenDiskBIO = bip;
+      found = true;
+      break;
+    }
+  }
+
+  if(!found) {
+    error(0, u"Could not find media with ID %u\r\n", chosenMedia);
+    return 1;
+  }
+
+  // Ask the user to install bootloader
+  installToDisk();
+
+  // Print info about chosen disk and disk image
+  // block size for from and to disks
+  UINTN fromBlockSize = diskImageBIO->Media->BlockSize,
+        toBlockSize = chosenDiskBIO->Media->BlockSize;
+
+  UINTN fromBlocks = (diskImageSize + (fromBlockSize-1)) / fromBlockSize; 
+  UINTN toBlocks = (diskImageSize + (toBlockSize-1)) / toBlockSize; 
+
+  printf(
+    u"Input Block Size: %u, Output Block Size: %u\r\n"
+    u"Input Blocks: %u, Output Blocks: %u\r\n",
+    fromBlockSize, toBlockSize,
+    fromBlocks, toBlocks
+  );
+
+  // Allocate buffer to hold copy of the disk image
+  VOID *imgBuffer = NULL;
+  status = bs->AllocatePool(EfiLoaderData, diskImageSize, &imgBuffer);
+  if(EFI_ERROR(status)) {
+    error(status, u"Could not allocate memory for disk image.\r\n");
+    return status;
+  }
+
+  // Read blocks from disk image media to buffer
+  printf(u"Reading %u blocks from disk image disk to buffer...\r\n", fromBlocks);
+  status = diskImageBIO->ReadBlocks(diskImageBIO, diskImageMediaID, 0, fromBlocks * fromBlockSize, imgBuffer);
+  if(EFI_ERROR(status)) {
+    error(status, u"Could not read blocks from disk image media to buffer.\r\n");
+    return status;
+  }
+
+  // Write blocks from buffer to chosen disk
+  printf(u"Writing %u blocks from buffer to chosen disk...\r\n", toBlocks);
+  status = chosenDiskBIO->WriteBlocks(chosenDiskBIO, chosenMedia, 0, toBlocks * toBlockSize, imgBuffer);
+  if(EFI_ERROR(status)) {
+    error(status, u"Could not write blocks from buffer to chosen disk.\r\n");
+    return status;
+  }
+
+  // Cleanup
+  bs->FreePool(imgBuffer);
+
+  printf(
+    u"\r\nDisk Image written to chosen disk.\r\n"
+    u"Reboot and choose now boot option when able.\r\n"
+  );
 
   printf(u"Press any key to continue...\r\n");
   getKey();
@@ -2336,8 +2592,11 @@ EFI_STATUS loadKernel(void) {
     goto cleanup;
   }
 
-  printf(u"Press any key to load kernel...\r\n");
-  getKey();
+  if(!autoloadKernel) {
+    printf(u"\r\nPress ESC to abort, or another key to load the kernel\r\n");
+    EFI_INPUT_KEY key = getKey();
+    if(key.ScanCode == SCANCODE_ESC) goto cleanup;
+  }
 
   // Close timer event so that it does not continue to fire off
   bs->CloseEvent(timerEvent);
