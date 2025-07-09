@@ -36,12 +36,13 @@ DISK_IMG_PGM = writeGpt
 
 all: $(TARGET) $(KERNEL)
 	cd $(DISK_IMG_FOLDER); \
-	./$(DISK_IMG_PGM) -ad $(KERNEL); \
 	./$(QEMU)
 
 $(TARGET): $(OBJS)
 	$(CC) $(LDFLAGS) -o $@ $<
 	cp $(TARGET) $(DISK_IMG_FOLDER)
+	cd $(DISK_IMG_FOLDER); \
+	./$(DISK_IMG_PGM) -ad $(KERNEL);
 
 $(TESTFILE):
 	echo TESTING > $@
@@ -52,21 +53,29 @@ $(TESTFILE):
 # 	clang -c $(CFLAGS) -fPIE -o kernel.o $<
 # 	ld -nostdlib -Tkernel/kernel.ld --oformat binary -pie -o $@ kernel.o
 # 	cp $@ $(DISK_IMG_FOLDER)
+#		cd $(DISK_IMG_FOLDER); \
+# 	./$(DISK_IMG_PGM) -ad $(KERNEL);
 
 #Flat binary MINGW GCC (PE)
 kernel.nx: kernel/kernel.c
 	x86_64-w64-mingw32-gcc -c $(CFLAGS) -fPIE -o kernel.o $<
 	x86_64-w64-mingw32-ld -nostdlib -Tkernel/kernel.ld --image-base=0 -pie -o kernel.obj kernel.o
 	objcopy -O binary kernel.obj $@
-	cp $@ $(DISK_IMG_FOLDER)
+	cp $@ $(DISK_IMG_FOLDER);
+	cd $(DISK_IMG_FOLDER); \
+	./$(DISK_IMG_PGM) -ad $(KERNEL);
 
 # kernel.elf: kernel/kernel.c
 # 	clang $(CFLAGS) -fPIE -e kmain -nostdlib -o $@ $<
 # 	cp $@ $(DISK_IMG_FOLDER)
+#		cd $(DISK_IMG_FOLDER); \
+# 	./$(DISK_IMG_PGM) -ad $(KERNEL);
 
 # kernel.pe: kernel/kernel.c
 # 	x86_64-w64-mingw32-gcc $(CFLAGS) -fPIE -e kmain -nostdlib -o $@ $<
 # 	cp $@ $(DISK_IMG_FOLDER)
+#		cd $(DISK_IMG_FOLDER); \
+# 	./$(DISK_IMG_PGM) -ad $(KERNEL);
 
 -include $(DEPENDS)
 

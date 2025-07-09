@@ -1934,6 +1934,158 @@ EFI_STATUS printEfiGlbVars(void) {
 }
 
 // =================
+// Print & Change Boot Variables
+// =================
+EFI_STATUS changeBootVars(void) {
+  cout->ClearScreen(cout);
+
+  bs->CloseEvent(timerEvent);
+
+  // Get Device Path to Text protocol to print Load Option device/file paths
+  EFI_STATUS status = EFI_SUCCESS;
+  EFI_GUID dpttpGuid =  EFI_DEVICE_PATH_TO_TEXT_PROTOCOL_GUID;
+  EFI_DEVICE_PATH_TO_TEXT_PROTOCOL *dpttp;
+  status = bs->LocateProtocol(&dpttpGuid, NULL, (VOID **)&dpttp);
+  if(EFI_ERROR(status)) {
+    error(status, u"Could not locate Device Path To Text Protocol!\r\n");
+    return status;
+  }
+
+  UINTN varNameSize = 0;
+  CHAR16 *varNameBuffer = 0;
+  EFI_GUID vendorGuid = {0};
+  
+
+  varNameSize = 2;
+  status = bs->AllocatePool(EfiLoaderData, varNameSize, (VOID **)&varNameBuffer);
+  if(EFI_ERROR(status)) {
+    error(status, u"Could not allocate 2 bytes...\r\n");
+    return status;
+  }
+
+  // Set var name to point to initial single null byte, to start off call to get list of var names
+  *varNameBuffer = u'\0';
+
+  status = rs->GetNextVariableName(&varNameSize, varNameBuffer, &vendorGuid);
+  while(status != EFI_NOT_FOUND) { // End of list
+    if(status == EFI_BUFFER_TOO_SMALL) {
+      // Reallocate larger buffer for var name
+      CHAR16 *tempBuffer = NULL;
+      status = bs->AllocatePool(EfiLoaderData, varNameSize, (VOID **)&tempBuffer);
+      if(EFI_ERROR(status)) {
+        error(status, u"Could not allocate %u bytes of memory for next variable name. \r\n", varNameSize);
+        return status;
+      }
+
+      strcpy_u16(tempBuffer, varNameBuffer); // copy old buffer tp new buffer
+      bs->FreePool(varNameBuffer); // Free old buffer
+      varNameBuffer = tempBuffer; // Set new buffer
+      //tempSize = varNameSize; // Set new buffer size
+
+      status = rs->GetNextVariableName(&varNameSize, varNameBuffer, &vendorGuid);
+      continue;
+    }
+
+    // Print var name and val
+    if(!memcmp(varNameBuffer, u"Boot", 8)) {
+      printf(u"%.*s: ", varNameSize, varNameBuffer);
+
+      // Get var value
+      UINT32 attributes = 0;
+      UINTN dataSize = 0;
+      VOID *data = 0;
+      // Call first with 0 data size to get actual amount needed
+      rs->GetVariable(varNameBuffer, &vendorGuid, &attributes, &dataSize, NULL);
+
+      status = bs->AllocatePool(EfiLoaderData, dataSize, (VOID **)&data);
+      if(EFI_ERROR(status)) {
+        error(status, u"Could not allocate %u bytes of memory for GetVariable().\r\n", dataSize);
+        goto cleanup;
+      }
+
+      // Get actual data now with correct size
+      rs->GetVariable(varNameBuffer, &vendorGuid, &attributes, &dataSize, data);
+
+      if(!memcmp(varNameBuffer, u"BootOrder", 18)) {
+        // Array of UINT16 values
+        UINT16 *p = data;
+        printf(u"0x");
+        for(UINTN i = 0; i < dataSize / 2; i++) printf(u"%.4x,", *p++);
+        printf(u"\r\n\r\n");
+        goto next;
+      }
+
+      if(!memcmp(varNameBuffer, u"BootOptionSupport", 34)) {
+        // Single UINT16 value
+        UINT32 *p = data;
+        printf(u"%#.8x\r\n\r\n", *p);
+        goto next;
+      }
+
+      if(!memcmp(varNameBuffer, u"BootNext", 18) || !memcmp(varNameBuffer, u"BootCurrent", 22)) {
+        // Single UINT16 Value
+        UINT16 *p = data;
+        printf(u"%#.4hx\r\n\r\n", *p);
+        goto next;
+      }
+
+      if(isHexDigitC16(varNameBuffer[4])) {
+        // Boot#### load option
+        EFI_LOAD_OPTION *loadOption = (EFI_LOAD_OPTION *)data;
+        CHAR16 *desc = (CHAR16 *)((UINT8 *)data + sizeof(UINT32) + sizeof(UINT16));
+        printf(u"Description: %s\r\n", desc);
+
+        CHAR16 *p = desc;
+        UINTN strlen = 0;
+        while(p[strlen]) strlen++;
+        strlen++; // Skip null byte
+
+        EFI_DEVICE_PATH_PROTOCOL *filePathList = (EFI_DEVICE_PATH_PROTOCOL *)(desc + strlen);
+
+        CHAR16 *devicePathText = dpttp->ConvertDevicePathToText(filePathList, FALSE, FALSE);
+        printf(u"Device Path: %s\r\n", devicePathText ? devicePathText : u"(null)");
+        
+        UINT8 *optionalData = (UINT8 *)filePathList + loadOption->FilePathListLength;
+        UINTN optionalDataSize = dataSize - (optionalData - (UINT8 *)data);
+        if(optionalDataSize > 0) {
+          printf(u"Optional Data: 0x");
+          for(UINTN i = 0; i < optionalDataSize; i++) printf(u"%.2hhx", optionalData[i]);
+          printf(u"\r\n");
+        }
+
+        printf(u"\r\n");
+      }
+      
+      next:
+      status = bs->FreePool(data);
+
+    };
+
+    if(cout->Mode->CursorRow >= textRows-2) {
+      printf(u"Press any key to continue...\r\n");
+      getKey();
+      cout->ClearScreen(cout);
+    }
+
+    status = rs->GetNextVariableName(&varNameSize, varNameBuffer, &vendorGuid);
+  }
+
+  // Allow user to change values
+
+  // Change BootOrder
+
+  // Change BootNext
+  
+  cleanup:
+  // Free buffer when done
+  bs->FreePool(varNameBuffer);
+
+  printf(u"Press any key to go back...\r\n");
+  getKey();
+  return EFI_SUCCESS;
+}
+
+// =================
 // Load Kernel
 // =================
 EFI_STATUS loadKernel(void) {

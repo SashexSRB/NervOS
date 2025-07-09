@@ -14,6 +14,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
   bs->SetWatchdogTimer(0, 0x10000, 0, NULL);
 
   const CHAR16 *menuChoices[] = {
+    u"Load Kernel",
     u"Set Text Mode",
     u"Set Graphics Mode",
     u"Test Mouse",
@@ -23,10 +24,11 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     u"Print Configuration Tables",
     u"Print ACPI Tables",
     u"Print Global EFI Variables",
-    u"Load Kernel",
+    u"Change Boot Variables",
   };
 
   EFI_STATUS (*menuFuncs[])(void) = {
+    loadKernel,
     setTextMode,
     setGraphicsMode,
     testMouse,
@@ -36,7 +38,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     printConfigTables,
     printAcpiTables,
     printEfiGlbVars,
-    loadKernel,
+    changeBootVars,
   };
 
   // Screen loop

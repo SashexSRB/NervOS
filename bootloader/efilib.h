@@ -422,6 +422,15 @@ BOOLEAN isDigitC16(CHAR16 c) {
 }
 
 // =================
+// isHexDigit
+// =================
+BOOLEAN isHexDigitC16(CHAR16 c) {
+  return (c >= u'0' && c <= u'9') ||
+         (c >= u'a' && c <= u'f') ||
+         (c >= u'A' && c <= u'F');
+}
+
+// =================
 // Copy string CHAR16 strcpy
 // =================
 CHAR16 *strcpy_u16(CHAR16 *dst, CHAR16 *src) {
