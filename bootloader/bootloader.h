@@ -1878,6 +1878,56 @@ EFI_STATUS printEfiGlbVars(void) {
 
   bs->CloseEvent(timerEvent);
 
+  UINTN varNameSize = 0;
+  CHAR16 *varNameBuffer = 0;
+  EFI_GUID vendorGuid = {0};
+  EFI_STATUS status = EFI_SUCCESS;
+
+  varNameSize = 2;
+  status = bs->AllocatePool(EfiLoaderData, varNameSize, (VOID **)&varNameBuffer);
+  if(EFI_ERROR(status)) {
+    error(status, u"Could not allocate 2 bytes...\r\n");
+    return status;
+  }
+
+  // Set var name to point to initial single null byte, to start off call to get list of var names
+  *varNameBuffer = u'\0';
+
+  status = rs->GetNextVariableName(&varNameSize, varNameBuffer, &vendorGuid);
+  while(status != EFI_NOT_FOUND) { // End of list
+    if(status == EFI_BUFFER_TOO_SMALL) {
+      // Reallocate larger buffer for var name
+      CHAR16 *tempBuffer = NULL;
+      status = bs->AllocatePool(EfiLoaderData, varNameSize, (VOID **)&tempBuffer);
+      if(EFI_ERROR(status)) {
+        error(status, u"Could not allocate %u bytes of memory for next variable name. \r\n", varNameSize);
+        return status;
+      }
+
+      strcpy_u16(tempBuffer, varNameBuffer); // copy old buffer tp new buffer
+      bs->FreePool(varNameBuffer); // Free old buffer
+      varNameBuffer = tempBuffer; // Set new buffer
+      //tempSize = varNameSize; // Set new buffer size
+
+      status = rs->GetNextVariableName(&varNameSize, varNameBuffer, &vendorGuid);
+      continue;
+    }
+
+    // Print var name
+    printf(u"%.*s\r\n", varNameSize, varNameBuffer);
+
+    if(cout->Mode->CursorRow >= textRows-2) {
+      printf(u"Press any key to continue...\r\n");
+      getKey();
+      cout->ClearScreen(cout);
+    }
+
+    status = rs->GetNextVariableName(&varNameSize, varNameBuffer, &vendorGuid);
+  }
+  
+  // Free buffer when done
+  bs->FreePool(varNameBuffer);
+
   printf(u"\r\nPress any key to go back...\r\n");
   getKey();
   return EFI_SUCCESS;
