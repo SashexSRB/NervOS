@@ -792,6 +792,7 @@ BOOLEAN getNumber(INTN *number) {
   *number = 0;
   do {
     key = getKey();
+    if(key.ScanCode == SCANCODE_ESC) return FALSE; // user wants to leave
     if(isDigitC16(key.UnicodeChar)) {
       *number = (*number * 10) + (key.UnicodeChar - u'0');
       printf(u"%c", key.UnicodeChar);
@@ -809,6 +810,7 @@ BOOLEAN getHex(UINTN *number) {
   *number = 0;
   do {
     key = getKey();
+    if(key.ScanCode == SCANCODE_ESC) return FALSE; // user wants to leave
     if(isDigitC16(key.UnicodeChar)) {
       *number = (*number * 16) + (key.UnicodeChar - u'0');
       printf(u"%c", key.UnicodeChar);
