@@ -1991,7 +1991,7 @@ EFI_STATUS changeBootVars(void) {
 
       // Print var name and val
       if(!memcmp(varNameBuffer, u"Boot", 8)) {
-        printf(u"%.*s: ", varNameSize, varNameBuffer);
+        printf(u"\r\n%.*s: ", varNameSize, varNameBuffer);
 
         // Get var value
         UINT32 attributes = 0;
@@ -2013,8 +2013,7 @@ EFI_STATUS changeBootVars(void) {
           bootOrderAttr = attributes; // Use of sets new BootOrder value;
           // Array of UINT16 values
           UINT16 *p = data;
-          printf(u"0x");
-          for(UINTN i = 0; i < dataSize / 2; i++) printf(u"%.4x,", *p++);
+          for(UINTN i = 0; i < dataSize / 2; i++) printf(u"%#.4x,", *p++);
           printf(u"\r\n\r\n");
           goto next;
         }
@@ -2022,22 +2021,22 @@ EFI_STATUS changeBootVars(void) {
         if(!memcmp(varNameBuffer, u"BootOptionSupport", 34)) {
           // Single UINT16 value
           UINT32 *p = data;
-          printf(u"%#.8x\r\n\r\n", *p);
+          printf(u"%#.8x\r\n", *p);
           goto next;
         }
 
         if(!memcmp(varNameBuffer, u"BootNext", 18) || !memcmp(varNameBuffer, u"BootCurrent", 22)) {
           // Single UINT16 Value
           UINT16 *p = data;
-          printf(u"%#.4hx\r\n\r\n", *p);
+          printf(u"%#.4hx\r\n", *p);
           goto next;
         }
 
-        if(isHexDigitC16(varNameBuffer[4])) {
+        if(isHexDigitC16(varNameBuffer[4]) && varNameSize == 18) {
           // Boot#### load option
           EFI_LOAD_OPTION *loadOption = (EFI_LOAD_OPTION *)data;
           CHAR16 *desc = (CHAR16 *)((UINT8 *)data + sizeof(UINT32) + sizeof(UINT16));
-          printf(u"Description: %s\r\n", desc);
+          printf(u"%s\r\n", desc);
 
           CHAR16 *p = desc;
           UINTN strlen = 0;
@@ -2057,8 +2056,10 @@ EFI_STATUS changeBootVars(void) {
             printf(u"\r\n");
           }
 
-          printf(u"\r\n");
+          goto next;
         }
+
+        printf(u"\r\n");
         
         next:
         status = bs->FreePool(data);
