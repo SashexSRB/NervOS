@@ -272,7 +272,6 @@ typedef struct {
 EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *cout = NULL; // Console out
 EFI_SIMPLE_TEXT_INPUT_PROTOCOL *cin = NULL; // Console out
 EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *cerr = NULL; // Console error
-EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *printfCout = NULL; // Printf specific cout/cerr
 EFI_SYSTEM_TABLE *st; // Systable
 EFI_BOOT_SERVICES *bs; // Boot Services
 EFI_RUNTIME_SERVICES *rs; // Runtime Services
@@ -392,6 +391,45 @@ UINTN strLen(char *str) {
 }
 
 // =================
+// strLen
+// =================
+UINTN strLenC16(CHAR16 *str) {
+  UINTN len = 0;
+  while(*str) {
+    len++;
+    str++;
+  }
+  return len;
+}
+
+// ======================================================
+// (CHAR16) strrev:
+//  Reverse a string.
+//  Returns reversed string.
+// ======================================================
+CHAR16 *strRevC16(CHAR16 *s) {
+    if (!s) return s;
+
+    CHAR16 *start = s, *end = s + strLenC16(s)-1;
+    while (start < end) {
+        CHAR16 temp = *end;  // Swap
+        *end-- = *start;
+        *start++ = temp;
+    }
+
+    return s;
+}
+
+CHAR16 *strCatC16(CHAR16 *dst, CHAR16 *src) {
+    CHAR16 *s = dst;
+    while (*s) s++;             // Go until null terminator
+    while (*src) *s++ = *src++; // Copy src to dst at null position
+    *s = u'\0';                 // Null terminate new string
+    return dst; 
+}
+
+
+// =================
 // Substring function
 // =================
 char *substr(char *haystack, char *needle) {
@@ -489,7 +527,7 @@ CHAR16 *strcat_u16(CHAR16 *dst, CHAR16 *src) {
 // =================
 // Print an number to stdout
 // =================
-BOOLEAN printNum(UINTN number, UINT8 base, BOOLEAN isSigned, UINTN minDigits) {
+BOOLEAN printNum(EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *stream, UINTN number, UINT8 base, BOOLEAN isSigned, UINTN minDigits) {
   const CHAR16 *digits = u"0123456789ABCDEF";
   CHAR16 buffer[24]; // enough for UINTN_MAX (UINT64_MAX) + sign
   UINTN i = 0;
@@ -529,7 +567,7 @@ BOOLEAN printNum(UINTN number, UINT8 base, BOOLEAN isSigned, UINTN minDigits) {
   }
 
   // print number string
-  printfCout->OutputString(printfCout, buffer);
+  stream->OutputString(stream, buffer);
 
   return TRUE;
 }
@@ -551,200 +589,383 @@ EFI_INPUT_KEY getKey(void) {
     return key;
 }
 
-// =================
-// Print formatted strings to stdout using a va_list for args
-// =================
-bool vprintf(CHAR16 *fmt, va_list args) {
-  bool result = TRUE;
-  CHAR16 cstr[2] = {0};; // place init this with memset and use = {} initializer
-  
-  //Initialize buffer
-  cstr[0] = u'\0', cstr[1] = u'\0';
+// ==========================================
+// (CHAR16) Add integer as string to buffer
+// ==========================================
+BOOLEAN addIntToBufC16(UINTN number, UINT8 base, BOOLEAN signed_num, UINTN min_digits, CHAR16 *buf, UINTN *buf_idx) {
+    const CHAR16 *digits = u"0123456789ABCDEF";
+    CHAR16 buffer[24];  // Hopefully enough for UINTN_MAX (UINT64_MAX) + sign character
+    UINTN i = 0;
+    BOOLEAN negative = FALSE;
 
-  // Print formatted string values
-  for (UINTN i=0 ; fmt[i] != u'\0'; i++) {
+    if (base > 16) {
+        cerr->OutputString(cerr, u"Invalid base specified!\r\n");
+        return FALSE;    // Invalid base
+    }
+
+    // Only use and print negative numbers if decimal and signed True
+    if (base == 10 && signed_num && (INTN)number < 0) {
+       number = -(INTN)number;  // Get absolute value of correct signed value to get digits to print
+       negative = TRUE;
+    }
+
+    do {
+       buffer[i++] = digits[number % base];
+       number /= base;
+    } while (number > 0);
+
+    while (i < min_digits) buffer[i++] = u'0'; // Pad with 0s
+
+    // Add negative sign for decimal numbers
+    if (base == 10 && negative) buffer[i++] = u'-';
+
+    // NULL terminate string
+    buffer[i--] = u'\0';
+
+    // Reverse buffer to read left to right
+    strRevC16(buffer);
+
+    // Add number string to input buffer for printing
+    for (CHAR16 *p = buffer; *p; p++) {
+        buf[*buf_idx] = *p;
+        *buf_idx += 1;
+    }
+    return TRUE;
+}
+
+// ========================================================================
+// (CHAR16) Fill formatted string buffer with printf() format conversions
+// ========================================================================
+bool formatStringC16(CHAR16 *buf, CHAR16 *fmt, va_list args) {
+  bool result = true;
+  CHAR16 charstr[2] = {0};    
+  UINTN buf_idx = 0;
+
+  for (UINTN i = 0; fmt[i] != u'\0'; i++) {
     if (fmt[i] == u'%') {
-      bool alternateForm = false;
-      UINTN minFieldWidth = 0; //8/16/32/64
+      bool alternate_form = false;
+      UINTN min_field_width = 0;
       UINTN precision = 0;
-      UINTN lengthBits = 0;
-      UINTN numPrinted = 0; // # of digits/chars printed
+      UINTN length_bits = 0;  
+      UINTN num_printed = 0;      // # of digits/chars printed for numbers or strings
       UINT8 base = 0;
-      bool signedNum = false;
-      bool numeric = false;
+      bool input_precision = false;
+      bool signed_num   = false;
+      bool int_num      = false;
+      bool double_num   = false;
+      bool left_justify = false;  // Left justify text from '-' flag instead of default right justify
+      bool space_flag   = false;
+      bool plus_flag    = false;
+      CHAR16 padding_char = ' ';  // '0' or ' ' depending on flags
       i++;
 
       // Check for flags
-      if(fmt[i] == u'#') {
-        // Alternate form
-        alternateForm = true;
-        i++;
+      while (true) {
+        switch (fmt[i]) {
+            case u'#':
+              // Alternate form
+              alternate_form = true;
+              i++;
+            continue;
+
+            case u'0':
+              // 0-pad numbers on the left, unless '-' or precision is also defined
+              padding_char = '0'; 
+              i++;
+            continue;
+
+            case u' ':
+              // Print a space before positive signed number conversion or empty string
+              //   number conversions
+              space_flag = true;
+              if (plus_flag) space_flag = false;  // Plus flag '+' overrides space flag
+              i++;
+            continue;
+
+            case u'+':
+              // Always print +/- before a signed number conversion
+              plus_flag = true;
+              if (space_flag) space_flag = false; // Plus flag '+' overrides space flag
+              i++;
+            continue;
+
+            case u'-':
+                  left_justify = true;
+                  i++;
+            continue;
+
+            default:
+            break;
+        }
+        break; // No more flags
       }
 
-      // '0', '-', ...
-
-      // Check for minimum field
-      if(fmt[i] == u'*') {
-        // get int arg for minFieldWidth
-        minFieldWidth = va_arg(args, int);
+      // Check for minimum field width e.g. in "8.2" this would be 8
+      if (fmt[i] == u'*') {
+        // Get int argument for min field width
+        min_field_width = va_arg(args, int);
         i++;
       } else {
-        // get number literal from fmt string
-        while (isDigitC16(fmt[i])) {
-          minFieldWidth = (minFieldWidth * 10) + (fmt[i++] - u'0');
-        }
+        // Get number literal from format string
+        while (isDigitC16(fmt[i])) 
+          min_field_width = (min_field_width * 10) + (fmt[i++] - u'0');
       }
 
-      // Check for precision/maximum field width
+      // Check for precision/maximum field width e.g. in "8.2" this would be 2
       if (fmt[i] == u'.') {
+        input_precision = true; 
         i++;
-        if(fmt[i] == u'*') {
-          // get int arg for precision
+        if (fmt[i] == u'*') {
+          // Get int argument for precision
           precision = va_arg(args, int);
           i++;
         } else {
-          // Get num literal for minFieldWidth
-          while (isDigitC16(fmt[i])) {
+          // Get number literal from format string
+          while (isDigitC16(fmt[i])) 
             precision = (precision * 10) + (fmt[i++] - u'0');
-          }
         }
       }
 
-      // Check for length modifiers e.g h/hh/l/ll
-      if(fmt[i] == u'h') {
+      // Check for Length modifiers e.g. h/hh/l/ll
+      if (fmt[i] == u'h') {
         i++;
-        lengthBits = 16;
-        if(fmt[i] == u'h') {
+        length_bits = 16;       // h
+        if (fmt[i] == u'h') {
           i++;
-          lengthBits = 8;
+          length_bits = 8;    // hh
         }
       } else if (fmt[i] == u'l') {
         i++;
-        lengthBits = 32;
-        if(fmt[i] == u'l') {
+        length_bits = 32;       // l
+        if (fmt[i] == u'l') {
           i++;
-          lengthBits = 64;
+          length_bits = 64;    // ll
         }
       }
 
       // Check for conversion specifier
-      // Grab next arg type from input args and print it
-      switch(fmt[i]) {
+      switch (fmt[i]) {
         case u'c': {
-          if(lengthBits == 8) {
-            cstr[0] = (char)va_arg(args, int); // ASCII or other 8bit
-          } else {
-            cstr[0] = (CHAR16)va_arg(args, int); // Assuming 16bit char16_t
-          }
-          printfCout->OutputString(printfCout, cstr);
+          // Print CHAR16 value; printf("%c", char)
+          if (length_bits == 8)
+            charstr[0] = (char)va_arg(args, int);   // %hhc "ascii" or other 8 bit char
+          else
+            charstr[0] = (CHAR16)va_arg(args, int); // Assuming 16 bit char16_t
+
+          // Only add non-null characters, to not end string early
+          if (charstr[0]) buf[buf_idx++] = charstr[0];    
         }
         break;
+
         case u's': {
-          if(lengthBits == 8) {
-            char *string = va_arg(args, char *); // %hhs: assuming 8 bit ascii
+          // Print CHAR16 string; printf("%s", string)
+          if (length_bits == 8) {
+            char *string = va_arg(args, char*);         // %hhs; Assuming 8 bit ascii chars
             while (*string) {
-              cstr[0] = *string++;
-              printfCout->OutputString(printfCout, cstr);
-              numPrinted++;
-              if(numPrinted == precision) break; // stop printing at max characters
+              buf[buf_idx++] = *string++;
+              if (++num_printed == precision) break;  // Stop printing at max characters
             }
-            // pad out with blanks by default to minimum field width
-            while (numPrinted < minFieldWidth) {
-              cstr[0] = u' ';
-              printfCout->OutputString(printfCout, cstr);
-              numPrinted++;
-            }
-          } else { 
-            CHAR16 *string = va_arg(args, CHAR16*); // Assuming 16bit char16_t
-             while (*string) {
-              cstr[0] = *string++;
-              printfCout->OutputString(printfCout, cstr);
-              numPrinted++;
-              if(numPrinted == precision) break; // stop printing at max characters
-            }
-            // pad out with blanks by default to minimum field width
-            while (numPrinted < minFieldWidth) {
-              cstr[0] = u' ';
-              printfCout->OutputString(printfCout, cstr);
-              numPrinted++;
+
+          } else {
+            CHAR16 *string = va_arg(args, CHAR16*);     // Assuming 16 bit char16_t
+            while (*string) {
+              buf[buf_idx++] = *string++;
+              if (++num_printed == precision) break;  // Stop printing at max characters
             }
           }
         }
         break;
-        case u'b': {
-          numeric = true;
-          base = 2;
-          signedNum = false;
-          if(alternateForm) printfCout->OutputString(printfCout, u"0b");
-        }
-        break;
-        case u'o': {
-          numeric = true;
-          base = 8;
-          signedNum = false;
-          if(alternateForm) printfCout->OutputString(printfCout, u"0o");
-        }
-        break;
+
         case u'd': {
-          numeric = true;
+          // Print INT32; printf("%d", number_int32)
+          int_num = true;
           base = 10;
-          signedNum = true;
+          signed_num = true;
         }
         break;
-        case u'u': {
-          numeric = true;
-          base = 10;
-          signedNum = false;
-        }
-        break;
+
         case u'x': {
-          numeric = true;
+          // Print hex UINTN; printf("%x", number_uintn)
+          int_num = true;
           base = 16;
-          signedNum = false;
-          if(alternateForm) printfCout->OutputString(printfCout, u"0x");
+          signed_num = false;
+          if (alternate_form) {
+            buf[buf_idx++] = u'0';
+            buf[buf_idx++] = u'x';
+          }
         }
         break;
+
+        case u'u': {
+          // Print UINT32; printf("%u", number_uint32)
+          int_num = true;
+          base = 10;
+          signed_num = false;
+        }
+        break;
+
+        case u'b': {
+          // Print UINTN as binary; printf("%b", number_uintn)
+          int_num = true;
+          base = 2;
+          signed_num = false;
+          if (alternate_form) {
+            buf[buf_idx++] = u'0';
+            buf[buf_idx++] = u'b';
+          }
+        }
+        break;
+
+        case u'o': {
+          // Print UINTN as octal; printf("%o", number_uintn)
+          int_num = true;
+          base = 8;
+          signed_num = false;
+          if (alternate_form) {
+            buf[buf_idx++] = u'0';
+            buf[buf_idx++] = u'o';
+          }
+        }
+        break;
+
+        case u'f': {
+          // Print INTN rounded float value
+          double_num = true;
+          signed_num = true;
+          base = 10;
+          if (!input_precision) precision = 6;    // Default decimal places to print
+        }
+        break;
+
         default:
-          printfCout->OutputString(printfCout, u"Invalid format specifier: %");
-          cstr[0] = fmt[i];
-          printfCout->OutputString(printfCout, cstr);
-          printfCout->OutputString(printfCout, u"\r\n");
-          result = FALSE;
+          strcpy_u16(buf, u"Invalid format specifier: %");
+          charstr[0] = fmt[i];
+          strCatC16(buf, charstr);
+          strCatC16(buf, u"\r\n");
+          result = false;
           goto end;
         break;
       }
-      if(numeric) {
-        // Printing a number
+
+      if (int_num) {
+        // Number conversion: Integer
         UINT64 number = 0;
-        switch(lengthBits) {
+        switch (length_bits) {
           case 0:
-          case 32: // l
+          case 32: 
           default:
+            // l
             number = va_arg(args, UINT32);
+            if (signed_num) number = (INT32)number;
           break;
-          
+
           case 8:
             // hh
             number = (UINT8)va_arg(args, int);
+            if (signed_num) number = (INT8)number;
           break;
+
           case 16:
+            // h
             number = (UINT16)va_arg(args, int);
+            if (signed_num) number = (INT16)number;
           break;
+
           case 64:
-            //ll
+            // ll
             number = va_arg(args, UINT64);
+            if (signed_num) number = (INT64)number;
+          break;
         }
-        printNum(number, base, signedNum, precision);
+
+        // Add space before positive number for ' ' flag
+        if (space_flag && signed_num && (INTN)number >= 0) buf[buf_idx++] = u' ';    
+
+        // Add sign +/- before signed number for '+' flag
+        if (plus_flag && signed_num) buf[buf_idx++] = (INTN)number >= 0 ? u'+' : u'-';
+
+        addIntToBufC16(number, base, signed_num, precision, buf, &buf_idx);
+      }
+
+      if (double_num) {
+        // Number conversion: Float/Double
+        double number = va_arg(args, double);
+        INTN whole_num = 0;
+
+        // Get digits before decimal point
+        whole_num = (INTN)number;
+        if (whole_num < 0) whole_num = -whole_num;
+
+        UINTN num_digits = 0;
+        do {
+          num_digits++; 
+          whole_num /= 10;
+        } while (whole_num > 0);
+
+        // Add digits to write buffer
+        addIntToBufC16(number, base, signed_num, num_digits, buf, &buf_idx);
+
+        // Print decimal digits equal to precision value, 
+        //   if precision is explicitly 0 then do not print
+        if (!input_precision || precision != 0) {
+          buf[buf_idx++] = u'.';      // Add decimal point
+
+          if (number < 0.0) number = -number; // Ensure number is positive
+          whole_num = (INTN)number;
+          number -= whole_num;                // Get only decimal digits
+          signed_num = FALSE;                 // Don't print negative sign for decimals
+
+          // Move precision # of decimal digits before decimal point 
+          //   using base 10, number = number * 10^precision
+          for (UINTN i = 0; i < precision; i++)
+            number *= 10;
+
+          // Add digits to write buffer
+          addIntToBufC16(number, base, signed_num, precision, buf, &buf_idx);
+        }
+      }
+
+      // Flags are defined such that 0 is overruled by left justify and precision
+      if (padding_char == u'0' && (left_justify || precision > 0))
+        padding_char = u' ';
+
+      // Add padding depending on flags (0 or space) and left/right justify
+      INTN diff = min_field_width - buf_idx;
+      if (diff > 0) {
+        if (left_justify) {
+          // Append padding to minimum width, always spaces
+          while (diff--) buf[buf_idx++] = u' ';   
+        } else {
+          // Right justify
+          // Copy buffer to end of buffer
+          INTN dst = min_field_width-1, src = buf_idx-1;
+          while (src >= 0)  buf[dst--] = buf[src--];  // e.g. "TEST\0\0" -> "TETEST"
+
+          // Overwrite beginning of buffer with padding
+          dst = (int_num && alternate_form) ? 2 : 0;  // Skip 0x/0b/0o/... prefix
+          while (diff--) buf[dst++] = padding_char;   // e.g. "TETEST" -> "  TEST"
+        }
       }
     } else {
-      // Not formatted, print next char
-      cstr[0] = fmt[i];
-      printfCout->OutputString(printfCout, cstr);
+      // Not formatted string, print next character
+      buf[buf_idx++] = fmt[i];
     }
   }
-end:
+
+  end:
+  buf[buf_idx] = u'\0'; 
   va_end(args);
   return result;
+}
+
+
+// =================
+// Print formatted strings to stdout using a va_list for args
+// =================
+bool vfprintf(EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *stream, CHAR16 *fmt, va_list args) {
+  CHAR16 buf[1024];   // Format string buffer for % strings
+  if (!formatStringC16(buf, fmt, args)) return false;
+  return !EFI_ERROR(stream->OutputString(stream, buf));
 } 
 
 // =================
@@ -754,7 +975,7 @@ bool printf(CHAR16 *fmt, ...) {
   bool result = true;
   va_list args;
   va_start(args, fmt);
-  result = vprintf(fmt, args);
+  result = vfprintf(cout, fmt, args);
   va_end(args);
   return result;
 }
@@ -763,18 +984,15 @@ bool printf(CHAR16 *fmt, ...) {
 // Print error message and get a key from user, so they can acknowledge the error and it doesnt go on immediately
 // =================
 bool error(char *file, int line, const char *func, EFI_STATUS status, CHAR16 *fmt, ...) {
-  printfCout = cerr;
 
   printf(u"\r\nERROR: FILE %hhs, LINE %d, FUNCTION %hhs\r\n", file, line, func);
 
   // Print error code & string if applicable
-  if(status > 0 && status - TOP_BIT < MAX_EFI_ERROR) printf(u"STATUS: %x (%s)\r\n", status, EFI_ERROR_STRINGS[status - TOP_BIT]);
+  if(status > 0 && status - TOP_BIT < MAX_EFI_ERROR) printf(u"STATUS: %#llx (%s)\r\n", status, EFI_ERROR_STRINGS[status - TOP_BIT]);
   
   va_list args;
   va_start(args, fmt);
-  bool result = vprintf(fmt, args); // Printf the error message to stderr
-
-  printfCout = cout; // Reset Priintf() to stdout
+  bool result = vfprintf(cerr, fmt, args); // Printf the error message to stderr
 
   getKey(); // User will respond with input before going on
   va_end(args);

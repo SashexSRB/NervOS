@@ -2,6 +2,7 @@
 #include "efi.h"
 #include "efilib.h"
 
+
 // =================
 // Set global vars
 // =================
@@ -10,7 +11,6 @@ void initGlbVars(EFI_HANDLE handle, EFI_SYSTEM_TABLE *systable) {
   cin = systable->ConIn;
   //cerr = systable->StdErr; // TODO: Research why it doesnt work in emulation
   cerr = cout; // Temporary
-  printfCout = cout; // Printf specific cout or cerr
   st = systable;
   bs = st->BootServices;
   rs = st->RuntimeServices;
@@ -2008,13 +2008,14 @@ EFI_STATUS changeBootVars(void) {
 
         // Get actual data now with correct size
         rs->GetVariable(varNameBuffer, &vendorGuid, &attributes, &dataSize, data);
+        if(dataSize == 0) goto next;
 
         if(!memcmp(varNameBuffer, u"BootOrder", 18)) {
           bootOrderAttr = attributes; // Use of sets new BootOrder value;
           // Array of UINT16 values
           UINT16 *p = data;
           for(UINTN i = 0; i < dataSize / 2; i++) printf(u"%#.4x,", *p++);
-          printf(u"\r\n\r\n");
+          printf(u"\r\n");
           goto next;
         }
 

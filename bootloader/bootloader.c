@@ -41,6 +41,19 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     changeBootVars,
   };
 
+  EFI_STATUS status;
+  UINTN handleCount = 0;
+  EFI_HANDLE *handleBuffer = NULL;
+  UINTN handleIdx = 0;
+
+  status = bs->LocateHandleBuffer(AllHandles, NULL, NULL, &handleCount, &handleBuffer);
+  if(!EFI_ERROR(status)) {
+    for(handleIdx = 0; handleIdx < handleCount; handleIdx++) {
+      status = bs->ConnectController(handleBuffer[handleIdx], NULL, NULL, TRUE);
+    }
+    bs->FreePool(handleBuffer);
+  }
+
   // Screen loop
   bool running = true;
   while(running) {
