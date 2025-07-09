@@ -2127,6 +2127,78 @@ EFI_STATUS changeBootVars(void) {
 }
 
 // =================
+// Write to another disk
+// =================
+EFI_STATUS writeToAnotherDisk(void) {
+  EFI_STATUS status = EFI_SUCCESS;
+  EFI_GUID bipGuid = EFI_BLOCK_IO_PROTOCOL_GUID;
+  EFI_BLOCK_IO_PROTOCOL *bip;
+  UINTN numHandles = 0;
+  EFI_HANDLE *handleBuffer = NULL;
+
+  cout->ClearScreen(cout);
+
+  bs->CloseEvent(timerEvent);
+
+  // Get Media ID for this disk image first, to compare to others in output stream
+  UINT32 diskImageMediaID = 0;
+  status = getDiskImageMediaID(&diskImageMediaID);
+  if(EFI_ERROR(status)) {
+    error(0, u"Could not get Disk Image Media ID\r\n");
+    return status;
+  }
+
+  // Loop through and print full disk block IO protocol media infos
+  status = bs->LocateHandleBuffer(ByProtocol, &bipGuid, NULL, &numHandles, &handleBuffer);
+  if(EFI_ERROR(status)) {
+    error(status, u"Could not locate Block IO Protocols.\r\n");
+    return status;
+  }
+  
+  UINT32 lastMediaId = -1; // Keep track of currently opened Media info
+  for(UINTN i = 0; i < numHandles; i++){
+    status = bs->OpenProtocol(handleBuffer[i], &bipGuid, (VOID **)&bip, image, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL);
+    if(EFI_ERROR(status)) {
+      error(status, u"Could not get any Block IO protocol on handle %u\r\n", i);
+      continue;
+    }
+
+    if(bip->Media->LastBlock == 0 || bip->Media->LogicalPartition || !bip->Media->MediaPresent || bip->Media->ReadOnly) {
+      // Only really care about partitions/disks above 1 blk in size, and block ios for the whole disk
+      // and media that is currently present, and RW
+      continue;
+    }
+
+    // Print Block IO Media Info for this Disk/Partition
+    if(lastMediaId != bip->Media->MediaId) {
+      lastMediaId = bip->Media->MediaId;
+      printf(
+        u"Media ID %u %s", 
+        lastMediaId, 
+        (lastMediaId == diskImageMediaID ? u"(Disk Image)\r\n" : u"\r\n")
+      );
+    }
+    
+    UINTN size = (bip->Media->LastBlock+1) * bip->Media->BlockSize;
+    printf(
+      u"Removable: %s, Block Size: %u, Last Block: %u\r\n"
+      u"Lowest Aligned LBA: %u, Size: %u/%u MiB/%u GiB\r\n\r\n",
+      BOOL_TO_YN(bip->Media->RemovableMedia),
+      bip->Media->BlockSize,
+      bip->Media->LastBlock,
+      bip->Media->LowestAlignedLba,
+      size, 
+      size / (1024 * 1024), 
+      size / (1024 * 1024 * 1024)
+    );
+  }
+
+  printf(u"Press any key to continue...\r\n");
+  getKey();
+  return EFI_SUCCESS;
+}
+
+// =================
 // Load Kernel
 // =================
 EFI_STATUS loadKernel(void) {

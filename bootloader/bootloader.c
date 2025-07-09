@@ -25,6 +25,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     u"Print ACPI Tables",
     u"Print Global EFI Variables",
     u"Change Boot Variables",
+    u"Write Disk Image To Other Disk",
   };
 
   EFI_STATUS (*menuFuncs[])(void) = {
@@ -39,6 +40,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     printAcpiTables,
     printEfiGlbVars,
     changeBootVars,
+    writeToAnotherDisk,
   };
 
   EFI_STATUS status;
