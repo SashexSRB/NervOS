@@ -22,6 +22,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     u"Print Memory Map",
     u"Print Configuration Tables",
     u"Print ACPI Tables",
+    u"Print Global EFI Variables",
     u"Load Kernel",
   };
 
@@ -34,6 +35,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     printMemoryMap,
     printConfigTables,
     printAcpiTables,
+    printEfiGlbVars,
     loadKernel,
   };
 

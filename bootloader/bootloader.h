@@ -1485,7 +1485,7 @@ EFI_STATUS printMemoryMap(void) {
 
   bs->CloseEvent(timerEvent);
 
-  MemoryMapInfo mMap = {0};
+  MemoryMapInfo mMap = {0}; // 1488th line of code?? hitler reference? :D
   getMemoryMap(&mMap);
   
   // Print memory map descriptor values
@@ -1494,7 +1494,7 @@ EFI_STATUS printMemoryMap(void) {
     u"Number of Descriptors: %u, Key: %x\r\n",
     mMap.size, mMap.descriptorSize, 
     mMap.size / mMap.descriptorSize, mMap.key
-  ); // 1488th line of code?? hitler reference? :D
+  ); 
 
   UINTN usableBytes = 0; // "Usable" memory for an OS or similar, not firmware/device reserved
   for (UINTN i = 0; i < mMap.size / mMap.descriptorSize; i++) {
@@ -1868,6 +1868,19 @@ void setRuntimeAddrMap(MemoryMapInfo *mMap){
   if(EFI_ERROR(status)) {
     error(0, u"SetVirtualAddressMap()\r\n");
   }
+}
+
+// =================
+// Print global EFI vars
+// =================
+EFI_STATUS printEfiGlbVars(void) {
+  cout->ClearScreen(cout);
+
+  bs->CloseEvent(timerEvent);
+
+  printf(u"\r\nPress any key to go back...\r\n");
+  getKey();
+  return EFI_SUCCESS;
 }
 
 // =================
